@@ -2,7 +2,7 @@
 
 Eine Electron-Desktop-App im Stil von Cursor oder Claude Artifacts mit:
 
-- Streaming-Chat gegen OpenAI
+- Streaming-Chat gegen mehrere LLM-Anbieter ueber OpenAI-kompatible APIs
 - Tool-Calling fuer Dateisystem und Terminal
 - Echtzeit-Parsing von `<artifact>`-Tags
 - Monaco Code View fuer Artefakte
@@ -10,10 +10,24 @@ Eine Electron-Desktop-App im Stil von Cursor oder Claude Artifacts mit:
 - Persistenter Chat- und Artifact-Verlauf zwischen App-Starts
 - Parser-Unit-Tests mit Vitest
 
+Aktuell gibt es Presets fuer:
+
+- OpenAI
+- Anthropic
+- Gemini
+- OpenRouter
+- Groq
+- Together AI
+- Fireworks AI
+- DeepSeek
+- xAI
+- Ollama
+- beliebige Custom OpenAI-kompatible Endpunkte
+
 ## Voraussetzungen
 
 - Node.js 20+
-- Eine gesetzte OpenAI API via UI oder `OPENAI_API_KEY`
+- Ein API-Key fuer deinen gewuenschten Anbieter oder ein lokaler kompatibler Endpoint wie Ollama
 
 ## Entwicklung
 
@@ -22,7 +36,8 @@ npm install
 npm run dev
 ```
 
-Optional kann die API auch ueber `.env.example` bzw. eine `.env` mit `OPENAI_API_KEY` gesetzt werden.
+Optional koennen Provider-Keys auch ueber `.env.example` bzw. eine `.env` gesetzt werden.
+Fuer Anthropic und Gemini nutzt die App die offiziellen OpenAI-Kompatibilitaetsendpunkte; das ist praktisch fuer eine einheitliche Tool- und Streaming-Pipeline, ersetzt aber nicht alle nativen Anbieter-Features.
 
 ## Produktionstest
 
@@ -41,6 +56,6 @@ npm run dist
 
 ## Architektur
 
-- `electron/`: Main Process, IPC, Config-Store, OpenAI- und Tool-Bruecke
-- `shared/`: Prozessuebergreifende Vertrage und Defaults
+- `electron/`: Main Process, IPC, Config-Store, Multi-Provider-LLM- und Tool-Bruecke
+- `shared/`: Prozessuebergreifende Vertrage, Provider-Presets und Defaults
 - `src/`: React Renderer, Zustand-Store, Stream-Parser, Monaco- und Preview-UI

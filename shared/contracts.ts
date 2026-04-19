@@ -1,4 +1,6 @@
 export const DEFAULT_MODEL = 'gpt-5.4';
+export { DEFAULT_BASE_URL, DEFAULT_PROVIDER_ID, LLM_PROVIDER_PRESETS } from './provider-presets';
+export type { LlmProviderId, LlmProviderPreset } from './provider-presets';
 
 export const DEFAULT_SYSTEM_PROMPT = `You are a senior autonomous software engineer operating inside a desktop workspace.
 
@@ -51,6 +53,8 @@ export type DesktopAppInfo = {
 };
 
 export type AppConfig = {
+  providerId: string;
+  baseUrl: string;
   apiKey: string;
   model: string;
   systemPrompt: string;

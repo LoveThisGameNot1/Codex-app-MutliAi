@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { AutomationService } from './automation-service';
 import { AutomationStore } from './automation-store';
 import { SessionStore } from './session-store';
+import { DEFAULT_BASE_URL, DEFAULT_PROVIDER_ID } from '../shared/provider-presets';
 
 const tempDirs: string[] = [];
 
@@ -44,7 +45,13 @@ describe('AutomationService', () => {
       automationStore,
       sessionStore,
       llmServiceStub,
-      async () => ({ apiKey: 'test-key', model: 'gpt-5.4', systemPrompt: 'system' }),
+      async () => ({
+        providerId: DEFAULT_PROVIDER_ID,
+        baseUrl: DEFAULT_BASE_URL,
+        apiKey: 'test-key',
+        model: 'gpt-5.4',
+        systemPrompt: 'system',
+      }),
       () => {
         events.push('changed');
       },
@@ -88,7 +95,13 @@ describe('AutomationService', () => {
       automationStore,
       sessionStore,
       llmServiceStub,
-      async () => ({ apiKey: 'test-key', model: 'gpt-5.4', systemPrompt: 'system' }),
+      async () => ({
+        providerId: DEFAULT_PROVIDER_ID,
+        baseUrl: DEFAULT_BASE_URL,
+        apiKey: 'test-key',
+        model: 'gpt-5.4',
+        systemPrompt: 'system',
+      }),
       () => undefined,
     );
 
@@ -123,7 +136,13 @@ describe('AutomationService', () => {
       automationStore,
       sessionStore,
       llmServiceStub,
-      async () => ({ apiKey: 'test-key', model: 'gpt-5.4', systemPrompt: 'system' }),
+      async () => ({
+        providerId: DEFAULT_PROVIDER_ID,
+        baseUrl: DEFAULT_BASE_URL,
+        apiKey: 'test-key',
+        model: 'gpt-5.4',
+        systemPrompt: 'system',
+      }),
       () => undefined,
     );
 
@@ -158,7 +177,13 @@ describe('AutomationService', () => {
       automationStore,
       sessionStore,
       llmServiceStub,
-      async () => ({ apiKey: 'test-key', model: 'gpt-5.4', systemPrompt: 'system' }),
+      async () => ({
+        providerId: DEFAULT_PROVIDER_ID,
+        baseUrl: DEFAULT_BASE_URL,
+        apiKey: 'test-key',
+        model: 'gpt-5.4',
+        systemPrompt: 'system',
+      }),
       () => undefined,
     );
 
@@ -206,7 +231,13 @@ describe('AutomationService', () => {
       automationStore,
       sessionStore,
       llmServiceStub,
-      async () => ({ apiKey: 'test-key', model: 'gpt-5.4', systemPrompt: 'system' }),
+      async () => ({
+        providerId: DEFAULT_PROVIDER_ID,
+        baseUrl: DEFAULT_BASE_URL,
+        apiKey: 'test-key',
+        model: 'gpt-5.4',
+        systemPrompt: 'system',
+      }),
       () => undefined,
     );
 

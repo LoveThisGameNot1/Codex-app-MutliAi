@@ -21,6 +21,11 @@ import {
   type WriteFileArgs,
 } from './tool-service';
 import { SessionStore } from './session-store';
+import {
+  getProviderPreset,
+  isApiKeyOptionalForProvider,
+  resolveBaseUrl,
+} from '../shared/provider-presets';
 
 const nowIso = (): string => new Date().toISOString();
 
@@ -60,6 +65,27 @@ Runtime capabilities:
 - Use automation tools when the user asks for repeated work, scheduled checks, or autonomous follow-up runs.`;
 };
 
+const buildClient = (config: AppConfig): OpenAI => {
+  const provider = getProviderPreset(config.providerId);
+  const baseURL = resolveBaseUrl(provider.id, config.baseUrl);
+  const apiKey = config.apiKey.trim() || (isApiKeyOptionalForProvider(provider.id, baseURL) ? 'ollama' : '');
+  const defaultHeaders: Record<string, string> = {};
+
+  if (provider.id === 'openrouter') {
+    defaultHeaders['X-Title'] = 'CodexApp Multi APIs';
+  }
+
+  if (provider.id === 'gemini') {
+    defaultHeaders['x-goog-api-client'] = 'codexapp-multi-apis/0.1.0';
+  }
+
+  return new OpenAI({
+    apiKey,
+    baseURL,
+    defaultHeaders: Object.keys(defaultHeaders).length > 0 ? defaultHeaders : undefined,
+  });
+};
+
 export class LlmService {
   private readonly sessions = new Map<string, Session>();
   private readonly activeRunners = new Map<string, ReturnType<OpenAI['chat']['completions']['runTools']>>();
@@ -81,19 +107,21 @@ export class LlmService {
   public async startChat(request: StartChatRequest, emitEvent: EmitEvent): Promise<void> {
     await this.initializationPromise;
     const { config, message, requestId, sessionId } = request;
+    const provider = getProviderPreset(config.providerId);
+    const baseURL = resolveBaseUrl(provider.id, config.baseUrl);
     const apiKey = config.apiKey.trim();
 
-    if (!apiKey) {
+    if (!apiKey && !isApiKeyOptionalForProvider(provider.id, baseURL)) {
       emitEvent({
         type: 'chat.error',
         requestId,
-        message: 'No OpenAI API key is configured. Add one in the settings panel.',
+        message: `No API key is configured for ${provider.label}. Add one in the settings panel.`,
         finishedAt: nowIso(),
       });
       return;
     }
 
-    const client = new OpenAI({ apiKey });
+    const client = buildClient(config);
     const prompt = buildPrompt(config.systemPrompt);
     const session = this.ensureSession(sessionId, prompt);
 

@@ -11,7 +11,7 @@ import type {
   PersistedSessionSummary,
   ToolExecutionRecord,
 } from '../../shared/contracts';
-import { DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT } from '../../shared/contracts';
+import { DEFAULT_BASE_URL, DEFAULT_MODEL, DEFAULT_PROVIDER_ID, DEFAULT_SYSTEM_PROMPT } from '../../shared/contracts';
 
 const nowIso = (): string => new Date().toISOString();
 const createId = (): string =>
@@ -75,6 +75,8 @@ export type AppState = {
 };
 
 const initialConfig: AppConfig = {
+  providerId: DEFAULT_PROVIDER_ID,
+  baseUrl: DEFAULT_BASE_URL,
   apiKey: '',
   model: DEFAULT_MODEL,
   systemPrompt: DEFAULT_SYSTEM_PROMPT,

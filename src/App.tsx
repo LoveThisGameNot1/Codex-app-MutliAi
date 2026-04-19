@@ -4,6 +4,7 @@ import { automationRuntime } from '@/services/automation-runtime';
 import { chatRuntime } from '@/services/chat-runtime';
 import { getConfig, getDesktopAppInfo } from '@/services/electron-api';
 import { useAppStore } from '@/store/app-store';
+import { DEFAULT_BASE_URL, DEFAULT_PROVIDER_ID, DEFAULT_SYSTEM_PROMPT } from '../shared/contracts';
 
 const App = () => {
   const setAppInfo = useAppStore((state) => state.setAppInfo);
@@ -19,9 +20,11 @@ const App = () => {
 
     void getConfig().then(hydrateConfig).catch(() => {
       hydrateConfig({
+        providerId: DEFAULT_PROVIDER_ID,
+        baseUrl: DEFAULT_BASE_URL,
         apiKey: '',
         model: 'gpt-5.4',
-        systemPrompt: '',
+        systemPrompt: DEFAULT_SYSTEM_PROMPT,
       });
     });
   }, [hydrateConfig, setAppInfo]);

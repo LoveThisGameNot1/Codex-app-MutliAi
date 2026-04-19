@@ -2,6 +2,12 @@ import { useMemo } from 'react';
 import { AutomationPanel } from '@/components/AutomationPanel';
 import { useAppStore } from '@/store/app-store';
 import { chatRuntime } from '@/services/chat-runtime';
+import {
+  getProviderPreset,
+  isApiKeyOptionalForProvider,
+  LLM_PROVIDER_PRESETS,
+  resolveBaseUrl,
+} from '../../shared/provider-presets';
 
 export const SettingsPanel = () => {
   const config = useAppStore((state) => state.config);
@@ -14,6 +20,11 @@ export const SettingsPanel = () => {
   const isStreaming = useAppStore((state) => state.isStreaming);
 
   const workspaceLabel = useMemo(() => appInfo?.workspaceRoot || 'Unavailable', [appInfo]);
+  const providerPreset = useMemo(() => getProviderPreset(config.providerId), [config.providerId]);
+  const apiKeyOptional = useMemo(
+    () => isApiKeyOptionalForProvider(config.providerId, config.baseUrl),
+    [config.baseUrl, config.providerId],
+  );
 
   if (!isOpen) {
     return null;
@@ -25,7 +36,8 @@ export const SettingsPanel = () => {
         <div>
           <h3 className="text-lg font-semibold text-white">Runtime Settings</h3>
           <p className="mt-1 text-sm text-slate-400">
-            API credentials stay in the Electron main process and are persisted in the app user data folder.
+            API credentials stay in the Electron main process and are persisted in the app user data folder. The app now
+            supports multiple OpenAI-compatible providers, not just OpenAI.
           </p>
         </div>
         <button
@@ -37,9 +49,31 @@ export const SettingsPanel = () => {
         </button>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-3">
         <label className="flex flex-col gap-2 text-sm text-slate-300">
-          OpenAI API Key
+          Provider
+          <select
+            value={config.providerId}
+            onChange={(event) => {
+              const nextPreset = getProviderPreset(event.target.value);
+              updateConfig((current) => ({
+                ...current,
+                providerId: nextPreset.id,
+                baseUrl: resolveBaseUrl(nextPreset.id, nextPreset.baseUrl),
+              }));
+            }}
+            className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-slate-100 outline-none transition focus:border-sky-400/40"
+          >
+            {LLM_PROVIDER_PRESETS.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-2 text-sm text-slate-300">
+          API Key
           <input
             type="password"
             value={config.apiKey}
@@ -49,7 +83,29 @@ export const SettingsPanel = () => {
                 apiKey: event.target.value,
               }))
             }
-            placeholder="sk-..."
+            placeholder={
+              apiKeyOptional
+                ? `Optional for ${providerPreset.label}`
+                : providerPreset.apiKeyEnvVar
+                  ? `Use ${providerPreset.apiKeyEnvVar} or paste key here`
+                  : 'Paste provider API key'
+            }
+            className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-slate-100 outline-none transition focus:border-sky-400/40"
+          />
+        </label>
+
+        <label className="flex flex-col gap-2 text-sm text-slate-300">
+          Base URL
+          <input
+            type="text"
+            value={config.baseUrl}
+            onChange={(event) =>
+              updateConfig((current) => ({
+                ...current,
+                baseUrl: event.target.value,
+              }))
+            }
+            placeholder={providerPreset.baseUrl}
             className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-slate-100 outline-none transition focus:border-sky-400/40"
           />
         </label>
@@ -65,10 +121,54 @@ export const SettingsPanel = () => {
                 model: event.target.value,
               }))
             }
-            placeholder="gpt-5.4"
+            placeholder={providerPreset.suggestedModel}
             className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-slate-100 outline-none transition focus:border-sky-400/40"
           />
         </label>
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-sky-400/15 bg-sky-400/5 px-4 py-4 text-sm text-slate-300">
+        <p className="font-medium text-sky-100">{providerPreset.label}</p>
+        <p className="mt-1 text-slate-400">{providerPreset.description}</p>
+        <div className="mt-3 grid gap-2 text-xs text-slate-400 md:grid-cols-3">
+          <span>Base URL: {providerPreset.baseUrl}</span>
+          <span>Suggested model: {providerPreset.suggestedModel}</span>
+          <span>
+            API key: {apiKeyOptional ? 'optional for local/self-hosted usage' : providerPreset.apiKeyEnvVar || 'required'}
+          </span>
+        </div>
+        <div className="mt-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Quick model picks</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {providerPreset.popularModels.map((modelId) => {
+              const active = config.model === modelId;
+              return (
+                <button
+                  key={modelId}
+                  type="button"
+                  onClick={() =>
+                    updateConfig((current) => ({
+                      ...current,
+                      model: modelId,
+                    }))
+                  }
+                  className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                    active
+                      ? 'border-sky-300/50 bg-sky-300/15 text-sky-100'
+                      : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  {modelId}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {providerPreset.notes ? <p className="mt-3 text-xs text-amber-200/80">{providerPreset.notes}</p> : null}
+        <p className="mt-3 text-xs text-slate-500">
+          Presets cover OpenAI, Anthropic, Gemini, OpenRouter, Groq, Together, Fireworks, DeepSeek, xAI, Ollama,
+          plus a custom OpenAI-compatible endpoint.
+        </p>
       </div>
 
       <label className="mt-4 flex flex-col gap-2 text-sm text-slate-300">
