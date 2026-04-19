@@ -4,6 +4,7 @@ import { useAppStore } from '@/store/app-store';
 import { chatRuntime } from '@/services/chat-runtime';
 import { listAvailableModels } from '@/services/electron-api';
 import type { ModelCatalogResult } from '../../shared/contracts';
+import { inferConfiguredModelCapabilities } from '../../shared/model-capabilities';
 import {
   getProviderPreset,
   isApiKeyOptionalForProvider,
@@ -23,6 +24,7 @@ export const SettingsPanel = () => {
 
   const workspaceLabel = useMemo(() => appInfo?.workspaceRoot || 'Unavailable', [appInfo]);
   const providerPreset = useMemo(() => getProviderPreset(config.providerId), [config.providerId]);
+  const selectedModelCapabilities = useMemo(() => inferConfiguredModelCapabilities(config), [config]);
   const apiKeyOptional = useMemo(
     () => isApiKeyOptionalForProvider(config.providerId, config.baseUrl),
     [config.baseUrl, config.providerId],
@@ -180,6 +182,42 @@ export const SettingsPanel = () => {
         </label>
       </div>
 
+      <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-sm text-slate-300">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="font-medium text-slate-100">Selected Model Health</p>
+            <p className="mt-1 text-xs text-slate-500">{selectedModelCapabilities.summary}</p>
+          </div>
+          <span
+            className={`rounded-full border px-3 py-1 text-xs ${
+              selectedModelCapabilities.recommendedForAgent
+                ? 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100'
+                : 'border-amber-300/30 bg-amber-300/10 text-amber-100'
+            }`}
+          >
+            {selectedModelCapabilities.recommendedForAgent ? 'Recommended for agent runs' : 'Use with caution'}
+          </span>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">
+            Streaming: {selectedModelCapabilities.streaming}
+          </span>
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">
+            Tool calling: {selectedModelCapabilities.toolCalling}
+          </span>
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">
+            Transport: {selectedModelCapabilities.transport}
+          </span>
+        </div>
+        {selectedModelCapabilities.notes.length > 0 ? (
+          <div className="mt-3 space-y-1 text-xs text-slate-400">
+            {selectedModelCapabilities.notes.map((note) => (
+              <p key={note}>{note}</p>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
       <div className="mt-4 rounded-2xl border border-sky-400/15 bg-sky-400/5 px-4 py-4 text-sm text-slate-300">
         <p className="font-medium text-sky-100">{providerPreset.label}</p>
         <p className="mt-1 text-slate-400">{providerPreset.description}</p>
@@ -277,14 +315,25 @@ export const SettingsPanel = () => {
                         model: model.id,
                       }))
                     }
-                    title={model.ownedBy ? `Owned by ${model.ownedBy}` : model.id}
+                    title={
+                      model.capabilities
+                        ? `${model.id}\nStreaming: ${model.capabilities.streaming}\nTool calling: ${model.capabilities.toolCalling}`
+                        : model.ownedBy
+                          ? `Owned by ${model.ownedBy}`
+                          : model.id
+                    }
                     className={`rounded-full border px-3 py-1.5 text-xs transition ${
                       active
                         ? 'border-emerald-300/40 bg-emerald-300/15 text-emerald-100'
                         : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
                     }`}
                   >
-                    {model.id}
+                    <span>{model.id}</span>
+                    {model.capabilities ? (
+                      <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                        {model.capabilities.streaming}/{model.capabilities.toolCalling}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}

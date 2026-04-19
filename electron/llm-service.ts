@@ -26,6 +26,7 @@ import {
   ToolExecutionRecord,
   UpdateAutomationInput,
 } from '../shared/contracts';
+import { inferModelCapabilities } from '../shared/model-capabilities';
 import { dedupeAndSortModels } from '../shared/model-catalog';
 import {
   getProviderPreset,
@@ -191,7 +192,10 @@ export class LlmService {
         source: 'preset-fallback',
         fetchedAt: nowCatalogIso(),
         warning: `No API key is configured for ${provider.label}, so showing preset models only.`,
-        models: fallbackModels,
+        models: fallbackModels.map((model) => ({
+          ...model,
+          capabilities: inferModelCapabilities(provider.id, model.id, baseUrl),
+        })),
       };
     }
 
@@ -203,7 +207,10 @@ export class LlmService {
         source: 'preset-fallback',
         fetchedAt: nowCatalogIso(),
         warning: `${provider.label} does not expose reliable model discovery through this transport yet.`,
-        models: fallbackModels,
+        models: fallbackModels.map((model) => ({
+          ...model,
+          capabilities: inferModelCapabilities(provider.id, model.id, baseUrl),
+        })),
       };
     }
 
@@ -224,7 +231,10 @@ export class LlmService {
         baseUrl,
         source: 'live',
         fetchedAt: nowCatalogIso(),
-        models: liveModels,
+        models: liveModels.map((model) => ({
+          ...model,
+          capabilities: inferModelCapabilities(provider.id, model.id, baseUrl),
+        })),
         warning: liveModels.length === 0 ? 'The provider returned no models, so preset suggestions were merged in.' : undefined,
       };
     } catch (error) {
@@ -236,7 +246,10 @@ export class LlmService {
         source: 'preset-fallback',
         fetchedAt: nowCatalogIso(),
         warning: `Live model discovery failed: ${messageText}`,
-        models: fallbackModels,
+        models: fallbackModels.map((model) => ({
+          ...model,
+          capabilities: inferModelCapabilities(provider.id, model.id, baseUrl),
+        })),
       };
     }
   }

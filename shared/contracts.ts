@@ -194,6 +194,18 @@ export type PersistedSessionPayload = {
 export type AvailableModelRecord = {
   id: string;
   ownedBy?: string;
+  capabilities?: ModelCapabilityAssessment;
+};
+
+export type ModelCapabilityLevel = 'supported' | 'likely' | 'limited' | 'unknown';
+
+export type ModelCapabilityAssessment = {
+  streaming: ModelCapabilityLevel;
+  toolCalling: ModelCapabilityLevel;
+  recommendedForAgent: boolean;
+  summary: string;
+  notes: string[];
+  transport: 'native' | 'compatible' | 'gateway-unknown';
 };
 
 export type ModelCatalogResult = {

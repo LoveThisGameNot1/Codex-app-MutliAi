@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { inferConfiguredModelCapabilities } from '../../shared/model-capabilities';
 import { useAppStore } from '@/store/app-store';
 import { chatRuntime } from '@/services/chat-runtime';
 
@@ -7,12 +8,14 @@ export const ChatComposer = () => {
   const setComposerValue = useAppStore((state) => state.setComposerValue);
   const isStreaming = useAppStore((state) => state.isStreaming);
   const activeRequestId = useAppStore((state) => state.activeRequestId);
+  const config = useAppStore((state) => state.config);
 
   const placeholder = useMemo(
     () =>
       'Ask the agent to inspect files, run terminal commands, or generate UI artifacts with <artifact> output.',
     [],
   );
+  const selectedModelCapabilities = useMemo(() => inferConfiguredModelCapabilities(config), [config]);
 
   return (
     <div className="rounded-[28px] border border-white/10 bg-slate-900/80 p-4 shadow-panel backdrop-blur">
@@ -31,9 +34,17 @@ export const ChatComposer = () => {
       />
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-slate-500">
-          `Enter` sends, `Shift + Enter` inserts a newline. Tools run in the Electron main process.
-        </p>
+        <div className="space-y-1">
+          <p className="text-xs text-slate-500">
+            `Enter` sends, `Shift + Enter` inserts a newline. Tools run in the Electron main process.
+          </p>
+          {!selectedModelCapabilities.recommendedForAgent ? (
+            <p className="text-xs text-amber-200/80">
+              Current model fit: streaming {selectedModelCapabilities.streaming}, tool calling{' '}
+              {selectedModelCapabilities.toolCalling}. This model may behave inconsistently for agent-style runs.
+            </p>
+          ) : null}
+        </div>
 
         <div className="flex gap-3">
           <button
