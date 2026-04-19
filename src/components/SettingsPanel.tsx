@@ -190,6 +190,13 @@ export const SettingsPanel = () => {
           </div>
         </div>
         {providerPreset.notes ? <p className="mt-3 text-xs text-amber-200/80">{providerPreset.notes}</p> : null}
+        {config.providerId === 'anthropic' || config.providerId === 'gemini' ? (
+          <p className="mt-3 text-xs text-sky-200/80">
+            Native {providerPreset.label} streaming and tool-calling are used when the base URL stays on the official
+            preset endpoint. If you override the endpoint, the app falls back to the OpenAI-compatible transport so
+            custom gateways still keep working.
+          </p>
+        ) : null}
         <p className="mt-3 text-xs text-slate-500">
           Presets cover OpenAI, Anthropic, Gemini, OpenRouter, Cerebras, SambaNova, DeepInfra, Groq, Together,
           Fireworks, DeepSeek, xAI, Ollama, plus a custom OpenAI-compatible endpoint.

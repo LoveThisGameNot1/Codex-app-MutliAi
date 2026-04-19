@@ -1,4 +1,16 @@
 import { app } from 'electron';
+import Anthropic from '@anthropic-ai/sdk';
+import {
+  GoogleGenAI,
+  FunctionCallingConfigMode,
+  createModelContent,
+  createPartFromFunctionResponse,
+  createUserContent,
+  type Content,
+  type FunctionCall,
+  type FunctionDeclaration,
+  type Part,
+} from '@google/genai';
 import OpenAI from 'openai';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import {
@@ -14,6 +26,12 @@ import {
   ToolExecutionRecord,
   UpdateAutomationInput,
 } from '../shared/contracts';
+import { dedupeAndSortModels } from '../shared/model-catalog';
+import {
+  getProviderPreset,
+  isApiKeyOptionalForProvider,
+  resolveBaseUrl,
+} from '../shared/provider-presets';
 import {
   executeTerminalTool,
   readFileTool,
@@ -24,14 +42,9 @@ import {
   type WriteFileArgs,
 } from './tool-service';
 import { SessionStore } from './session-store';
-import {
-  getProviderPreset,
-  isApiKeyOptionalForProvider,
-  resolveBaseUrl,
-} from '../shared/provider-presets';
-import { dedupeAndSortModels } from '../shared/model-catalog';
 
 const nowIso = (): string => new Date().toISOString();
+const MAX_NATIVE_OUTPUT_TOKENS = 4096;
 
 type EmitEvent = (event: ChatStreamEvent) => void;
 
@@ -46,6 +59,13 @@ type AutomationTooling = {
   updateAutomation: (input: UpdateAutomationInput) => Promise<AutomationRecord>;
   deleteAutomation: (automationId: string) => Promise<void>;
   runAutomation: (automationId: string) => Promise<AutomationRunRecord>;
+};
+
+type GenericToolDefinition = {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  execute: (args: unknown) => Promise<string>;
 };
 
 const safeJson = (value: unknown): string => JSON.stringify(value, null, 2);
@@ -69,6 +89,7 @@ Runtime capabilities:
 - Use automation tools when the user asks for repeated work, scheduled checks, or autonomous follow-up runs.`;
 };
 
+const normalizeBaseUrl = (input: string): string => input.trim().replace(/\/+$/, '');
 const nowCatalogIso = (): string => new Date().toISOString();
 
 const buildDefaultHeaders = (providerId: string): Record<string, string> | undefined => {
@@ -86,7 +107,7 @@ const buildDefaultHeaders = (providerId: string): Record<string, string> | undef
   return Object.keys(defaultHeaders).length > 0 ? defaultHeaders : undefined;
 };
 
-const buildClient = (config: AppConfig): OpenAI => {
+const buildOpenAIClient = (config: AppConfig): OpenAI => {
   const provider = getProviderPreset(config.providerId);
   const baseURL = resolveBaseUrl(provider.id, config.baseUrl);
   const apiKey = config.apiKey.trim() || (isApiKeyOptionalForProvider(provider.id, baseURL) ? 'ollama' : '');
@@ -96,6 +117,30 @@ const buildClient = (config: AppConfig): OpenAI => {
     baseURL,
     defaultHeaders: buildDefaultHeaders(provider.id),
   });
+};
+
+const stringifyContent = (content: ChatCompletionMessageParam['content']): string => {
+  if (typeof content === 'string') {
+    return content;
+  }
+
+  if (!Array.isArray(content)) {
+    return '';
+  }
+
+  return content
+    .map((item) => {
+      if ('type' in item && item.type === 'text') {
+        return item.text;
+      }
+
+      if ('type' in item && item.type === 'refusal') {
+        return item.refusal;
+      }
+
+      return '';
+    })
+    .join('');
 };
 
 export class LlmService {
@@ -118,6 +163,116 @@ export class LlmService {
 
   public async startChat(request: StartChatRequest, emitEvent: EmitEvent): Promise<void> {
     await this.initializationPromise;
+
+    if (this.shouldUseNativeAnthropic(request.config)) {
+      await this.startAnthropicChat(request, emitEvent);
+      return;
+    }
+
+    if (this.shouldUseNativeGemini(request.config)) {
+      await this.startGeminiChat(request, emitEvent);
+      return;
+    }
+
+    await this.startCompatibleChat(request, emitEvent);
+  }
+
+  public async listAvailableModels(config: AppConfig): Promise<ModelCatalogResult> {
+    const provider = getProviderPreset(config.providerId);
+    const baseUrl = resolveBaseUrl(provider.id, config.baseUrl);
+    const fallbackModels = dedupeAndSortModels([], provider.popularModels);
+    const apiKey = config.apiKey.trim();
+
+    if (!apiKey && !isApiKeyOptionalForProvider(provider.id, baseUrl)) {
+      return {
+        providerId: provider.id,
+        providerLabel: provider.label,
+        baseUrl,
+        source: 'preset-fallback',
+        fetchedAt: nowCatalogIso(),
+        warning: `No API key is configured for ${provider.label}, so showing preset models only.`,
+        models: fallbackModels,
+      };
+    }
+
+    if (provider.supportsModelDiscovery === false) {
+      return {
+        providerId: provider.id,
+        providerLabel: provider.label,
+        baseUrl,
+        source: 'preset-fallback',
+        fetchedAt: nowCatalogIso(),
+        warning: `${provider.label} does not expose reliable model discovery through this transport yet.`,
+        models: fallbackModels,
+      };
+    }
+
+    try {
+      const client = buildOpenAIClient(config);
+      const response = await client.models.list();
+      const liveModels = dedupeAndSortModels(
+        response.data.map<AvailableModelRecord>((model) => ({
+          id: model.id,
+          ownedBy: typeof model.owned_by === 'string' ? model.owned_by : undefined,
+        })),
+        provider.popularModels,
+      );
+
+      return {
+        providerId: provider.id,
+        providerLabel: provider.label,
+        baseUrl,
+        source: 'live',
+        fetchedAt: nowCatalogIso(),
+        models: liveModels,
+        warning: liveModels.length === 0 ? 'The provider returned no models, so preset suggestions were merged in.' : undefined,
+      };
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : 'Unknown model catalog error';
+      return {
+        providerId: provider.id,
+        providerLabel: provider.label,
+        baseUrl,
+        source: 'preset-fallback',
+        fetchedAt: nowCatalogIso(),
+        warning: `Live model discovery failed: ${messageText}`,
+        models: fallbackModels,
+      };
+    }
+  }
+
+  public async cancelChat(requestId: string): Promise<void> {
+    this.activeAbortControllers.get(requestId)?.abort();
+    const runner = this.activeRunners.get(requestId);
+    runner?.abort();
+    this.activeRunners.delete(requestId);
+    this.activeAbortControllers.delete(requestId);
+  }
+
+  public async resetSession(sessionId: string, config: AppConfig): Promise<void> {
+    await this.initializationPromise;
+    const prompt = buildPrompt(config.systemPrompt);
+    const session: Session = {
+      prompt,
+      messages: [
+        {
+          role: 'developer',
+          content: prompt,
+        },
+      ],
+    };
+
+    this.sessions.set(sessionId, session);
+    await this.persistSession(sessionId, session);
+  }
+
+  public async deleteSession(sessionId: string): Promise<void> {
+    await this.initializationPromise;
+    this.sessions.delete(sessionId);
+    await this.sessionStore.delete(sessionId);
+  }
+
+  private async startCompatibleChat(request: StartChatRequest, emitEvent: EmitEvent): Promise<void> {
     const { config, message, requestId, sessionId } = request;
     const provider = getProviderPreset(config.providerId);
     const baseURL = resolveBaseUrl(provider.id, config.baseUrl);
@@ -133,7 +288,7 @@ export class LlmService {
       return;
     }
 
-    const client = buildClient(config);
+    const client = buildOpenAIClient(config);
     const prompt = buildPrompt(config.systemPrompt);
     const session = this.ensureSession(sessionId, prompt);
 
@@ -151,11 +306,486 @@ export class LlmService {
       model: config.model,
     });
 
-    let toolCounter = 0;
     let contentSnapshot = '';
     const abortController = new AbortController();
     this.activeAbortControllers.set(requestId, abortController);
     const context: ToolContext = { workspaceRoot: this.workspaceRoot, signal: abortController.signal };
+    const toolDefinitions = this.createToolDefinitions(requestId, context, emitEvent);
+
+    const tools: Array<Parameters<OpenAI['chat']['completions']['runTools']>[0]['tools'][number]> = toolDefinitions.map((tool) => ({
+      type: 'function',
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.inputSchema,
+        parse: (input: string) => parseJson<unknown>(input),
+        function: (args: unknown) => tool.execute(args),
+      },
+    }));
+
+    const runner = client.chat.completions.runTools(
+      {
+        model: config.model,
+        stream: true,
+        messages: session.messages,
+        parallel_tool_calls: false,
+        tool_choice: 'auto',
+        tools: tools as never,
+      },
+      {
+        maxChatCompletions: 12,
+      },
+    ) as ReturnType<OpenAI['chat']['completions']['runTools']>;
+
+    this.activeRunners.set(requestId, runner);
+
+    runner.on('content', (delta: string, snapshot: string) => {
+      contentSnapshot = snapshot;
+      emitEvent({
+        type: 'assistant.delta',
+        requestId,
+        delta,
+      });
+    });
+
+    runner.on('abort', () => {
+      emitEvent({
+        type: 'chat.cancelled',
+        requestId,
+        finishedAt: nowIso(),
+      });
+    });
+
+    runner.on('error', (error) => {
+      emitEvent({
+        type: 'chat.error',
+        requestId,
+        message: error.message,
+        finishedAt: nowIso(),
+      });
+    });
+
+    try {
+      await runner.finalChatCompletion();
+      if (abortController.signal.aborted) {
+        return;
+      }
+
+      session.messages = [...runner.messages];
+      await this.persistSession(sessionId, session);
+
+      emitEvent({
+        type: 'assistant.completed',
+        requestId,
+        content: contentSnapshot,
+        finishedAt: nowIso(),
+      });
+    } catch (error) {
+      if (abortController.signal.aborted) {
+        return;
+      }
+
+      const messageText = error instanceof Error ? error.message : 'Unknown OpenAI error';
+      emitEvent({
+        type: 'chat.error',
+        requestId,
+        message: messageText,
+        finishedAt: nowIso(),
+      });
+    } finally {
+      this.activeRunners.delete(requestId);
+      this.activeAbortControllers.delete(requestId);
+    }
+  }
+
+  private async startAnthropicChat(request: StartChatRequest, emitEvent: EmitEvent): Promise<void> {
+    const { config, message, requestId, sessionId } = request;
+    const provider = getProviderPreset(config.providerId);
+    const apiKey = config.apiKey.trim();
+
+    if (!apiKey) {
+      emitEvent({
+        type: 'chat.error',
+        requestId,
+        message: `No API key is configured for ${provider.label}. Add one in the settings panel.`,
+        finishedAt: nowIso(),
+      });
+      return;
+    }
+
+    const prompt = buildPrompt(config.systemPrompt);
+    const session = this.ensureSession(sessionId, prompt);
+    session.messages.push({
+      role: 'user',
+      content: message,
+    });
+    await this.persistSession(sessionId, session);
+
+    emitEvent({
+      type: 'chat.started',
+      requestId,
+      sessionId,
+      startedAt: nowIso(),
+      model: config.model,
+    });
+
+    const abortController = new AbortController();
+    this.activeAbortControllers.set(requestId, abortController);
+    const context: ToolContext = { workspaceRoot: this.workspaceRoot, signal: abortController.signal };
+    const toolDefinitions = this.createToolDefinitions(requestId, context, emitEvent);
+    const anthropicTools: Anthropic.Tool[] = toolDefinitions.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
+    }));
+    const toolMap = new Map(toolDefinitions.map((tool) => [tool.name, tool]));
+    const client = new Anthropic({
+      apiKey,
+      baseURL: resolveBaseUrl(config.providerId, config.baseUrl),
+      defaultHeaders: buildDefaultHeaders(config.providerId),
+    });
+
+    let contentSnapshot = '';
+    const providerMessages = this.toAnthropicMessages(session.messages);
+
+    try {
+      while (true) {
+        const stream = client.messages.stream(
+          {
+            model: config.model,
+            max_tokens: MAX_NATIVE_OUTPUT_TOKENS,
+            system: prompt,
+            messages: providerMessages,
+            tools: anthropicTools,
+            tool_choice: {
+              type: 'auto',
+              disable_parallel_tool_use: true,
+            },
+          },
+          {
+            signal: abortController.signal,
+          },
+        );
+
+        stream.on('text', (textDelta: string) => {
+          contentSnapshot += textDelta;
+          emitEvent({
+            type: 'assistant.delta',
+            requestId,
+            delta: textDelta,
+          });
+        });
+
+        const finalMessage = await stream.finalMessage();
+        const assistantContent = finalMessage.content
+          .map((block) => {
+            if (block.type === 'text') {
+              return {
+                type: 'text' as const,
+                text: block.text,
+              };
+            }
+
+            if (block.type === 'tool_use') {
+              return {
+                type: 'tool_use' as const,
+                id: block.id,
+                name: block.name,
+                input: block.input,
+              };
+            }
+
+            return null;
+          })
+          .filter((block): block is NonNullable<typeof block> => block !== null) as Anthropic.ContentBlockParam[];
+
+        providerMessages.push({
+          role: 'assistant',
+          content: assistantContent,
+        });
+
+        const toolUses = finalMessage.content.filter((block): block is Anthropic.ToolUseBlock => block.type === 'tool_use');
+        if (toolUses.length === 0) {
+          break;
+        }
+
+        const toolResults: Anthropic.ToolResultBlockParam[] = [];
+        for (const toolUse of toolUses) {
+          const tool = toolMap.get(toolUse.name);
+          if (!tool) {
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: toolUse.id,
+              content: `Unknown tool: ${toolUse.name}`,
+              is_error: true,
+            });
+            continue;
+          }
+
+          try {
+            const output = await tool.execute(toolUse.input);
+            session.messages.push(this.createStoredToolMessage(requestId, toolUse.name, output));
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: toolUse.id,
+              content: output,
+            });
+          } catch (error) {
+            const messageText = error instanceof Error ? error.message : `Unknown tool failure for ${toolUse.name}`;
+            session.messages.push(this.createStoredToolMessage(requestId, toolUse.name, messageText));
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: toolUse.id,
+              content: messageText,
+              is_error: true,
+            });
+          }
+        }
+
+        providerMessages.push({
+          role: 'user',
+          content: toolResults,
+        });
+      }
+
+      if (abortController.signal.aborted) {
+        emitEvent({
+          type: 'chat.cancelled',
+          requestId,
+          finishedAt: nowIso(),
+        });
+        return;
+      }
+
+      session.messages.push({
+        role: 'assistant',
+        content: contentSnapshot,
+      });
+      await this.persistSession(sessionId, session);
+
+      emitEvent({
+        type: 'assistant.completed',
+        requestId,
+        content: contentSnapshot,
+        finishedAt: nowIso(),
+      });
+    } catch (error) {
+      if (abortController.signal.aborted) {
+        emitEvent({
+          type: 'chat.cancelled',
+          requestId,
+          finishedAt: nowIso(),
+        });
+        return;
+      }
+
+      const messageText = error instanceof Error ? error.message : 'Unknown Anthropic error';
+      emitEvent({
+        type: 'chat.error',
+        requestId,
+        message: messageText,
+        finishedAt: nowIso(),
+      });
+    } finally {
+      this.activeAbortControllers.delete(requestId);
+    }
+  }
+
+  private async startGeminiChat(request: StartChatRequest, emitEvent: EmitEvent): Promise<void> {
+    const { config, message, requestId, sessionId } = request;
+    const provider = getProviderPreset(config.providerId);
+    const apiKey = config.apiKey.trim();
+
+    if (!apiKey) {
+      emitEvent({
+        type: 'chat.error',
+        requestId,
+        message: `No API key is configured for ${provider.label}. Add one in the settings panel.`,
+        finishedAt: nowIso(),
+      });
+      return;
+    }
+
+    const prompt = buildPrompt(config.systemPrompt);
+    const session = this.ensureSession(sessionId, prompt);
+    session.messages.push({
+      role: 'user',
+      content: message,
+    });
+    await this.persistSession(sessionId, session);
+
+    emitEvent({
+      type: 'chat.started',
+      requestId,
+      sessionId,
+      startedAt: nowIso(),
+      model: config.model,
+    });
+
+    const abortController = new AbortController();
+    this.activeAbortControllers.set(requestId, abortController);
+    const context: ToolContext = { workspaceRoot: this.workspaceRoot, signal: abortController.signal };
+    const toolDefinitions = this.createToolDefinitions(requestId, context, emitEvent);
+    const toolMap = new Map(toolDefinitions.map((tool) => [tool.name, tool]));
+    const functionDeclarations: FunctionDeclaration[] = toolDefinitions.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parametersJsonSchema: tool.inputSchema,
+    }));
+    const client = new GoogleGenAI({
+      apiKey,
+      apiVersion: 'v1beta',
+      httpOptions: {
+        headers: buildDefaultHeaders(config.providerId),
+      },
+    });
+
+    let contentSnapshot = '';
+    const contents = this.toGeminiContents(session.messages);
+
+    try {
+      while (true) {
+        const stream = await client.models.generateContentStream({
+          model: config.model,
+          contents,
+          config: {
+            abortSignal: abortController.signal,
+            systemInstruction: prompt,
+            tools: [{ functionDeclarations }],
+            toolConfig: {
+              functionCallingConfig: {
+                mode: FunctionCallingConfigMode.AUTO,
+              },
+            },
+          },
+        });
+
+        let functionCalls: FunctionCall[] = [];
+
+        for await (const chunk of stream) {
+          if (chunk.text) {
+            contentSnapshot += chunk.text;
+            emitEvent({
+              type: 'assistant.delta',
+              requestId,
+              delta: chunk.text,
+            });
+          }
+
+          if (chunk.functionCalls?.length) {
+            functionCalls = chunk.functionCalls;
+          }
+        }
+
+        if (functionCalls.length === 0) {
+          break;
+        }
+
+        contents.push(
+          createModelContent(
+            functionCalls.map<Part>((functionCall) => ({
+              functionCall,
+            })),
+          ),
+        );
+
+        const functionResponses: Part[] = [];
+        for (const functionCall of functionCalls) {
+          const tool = functionCall.name ? toolMap.get(functionCall.name) : undefined;
+          if (!tool || !functionCall.name) {
+            functionResponses.push(
+              createPartFromFunctionResponse(functionCall.id || functionCall.name || 'unknown', functionCall.name || 'unknown', {
+                error: `Unknown tool: ${functionCall.name || 'unknown'}`,
+              }),
+            );
+            continue;
+          }
+
+          try {
+            const output = await tool.execute(functionCall.args ?? {});
+            session.messages.push(this.createStoredToolMessage(requestId, functionCall.name, output));
+            functionResponses.push(
+              createPartFromFunctionResponse(functionCall.id || functionCall.name, functionCall.name, {
+                output,
+              }),
+            );
+          } catch (error) {
+            const messageText = error instanceof Error ? error.message : `Unknown tool failure for ${functionCall.name}`;
+            session.messages.push(this.createStoredToolMessage(requestId, functionCall.name, messageText));
+            functionResponses.push(
+              createPartFromFunctionResponse(functionCall.id || functionCall.name, functionCall.name, {
+                error: messageText,
+              }),
+            );
+          }
+        }
+
+        contents.push(createUserContent(functionResponses));
+      }
+
+      if (abortController.signal.aborted) {
+        emitEvent({
+          type: 'chat.cancelled',
+          requestId,
+          finishedAt: nowIso(),
+        });
+        return;
+      }
+
+      session.messages.push({
+        role: 'assistant',
+        content: contentSnapshot,
+      });
+      await this.persistSession(sessionId, session);
+
+      emitEvent({
+        type: 'assistant.completed',
+        requestId,
+        content: contentSnapshot,
+        finishedAt: nowIso(),
+      });
+    } catch (error) {
+      if (abortController.signal.aborted) {
+        emitEvent({
+          type: 'chat.cancelled',
+          requestId,
+          finishedAt: nowIso(),
+        });
+        return;
+      }
+
+      const messageText = error instanceof Error ? error.message : 'Unknown Gemini error';
+      emitEvent({
+        type: 'chat.error',
+        requestId,
+        message: messageText,
+        finishedAt: nowIso(),
+      });
+    } finally {
+      this.activeAbortControllers.delete(requestId);
+    }
+  }
+
+  private shouldUseNativeAnthropic(config: AppConfig): boolean {
+    if (config.providerId !== 'anthropic') {
+      return false;
+    }
+
+    const provider = getProviderPreset(config.providerId);
+    return normalizeBaseUrl(resolveBaseUrl(config.providerId, config.baseUrl)) === normalizeBaseUrl(provider.baseUrl);
+  }
+
+  private shouldUseNativeGemini(config: AppConfig): boolean {
+    if (config.providerId !== 'gemini') {
+      return false;
+    }
+
+    const provider = getProviderPreset(config.providerId);
+    return normalizeBaseUrl(resolveBaseUrl(config.providerId, config.baseUrl)) === normalizeBaseUrl(provider.baseUrl);
+  }
+
+  private createToolDefinitions(requestId: string, context: ToolContext, emitEvent: EmitEvent): GenericToolDefinition[] {
+    let toolCounter = 0;
 
     const createToolRecord = (name: string, argumentsPayload: unknown): ToolExecutionRecord => ({
       id: `${requestId}:tool:${++toolCounter}`,
@@ -206,384 +836,225 @@ export class LlmService {
       }
     };
 
-    const tools: Array<Parameters<OpenAI['chat']['completions']['runTools']>[0]['tools'][number]> = [
+    const definitions: GenericToolDefinition[] = [
       {
-        type: 'function',
-        function: {
-          name: 'read_file',
-          description: 'Read the UTF-8 text contents of a file from disk.',
-          parameters: {
-            type: 'object',
-            properties: {
-              path: {
-                type: 'string',
-                description: 'Absolute path or path relative to the workspace root.',
-              },
+        name: 'read_file',
+        description: 'Read the UTF-8 text contents of a file from disk.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            path: {
+              type: 'string',
+              description: 'Absolute path or path relative to the workspace root.',
             },
-            required: ['path'],
-            additionalProperties: false,
           },
-          parse: (input: string) => parseJson<ReadFileArgs>(input),
-          function: (args: ReadFileArgs) => runInstrumentedTool('read_file', args, readFileTool),
+          required: ['path'],
+          additionalProperties: false,
         },
+        execute: (args: unknown) => runInstrumentedTool('read_file', args as ReadFileArgs, readFileTool),
       },
       {
-        type: 'function',
-        function: {
-          name: 'write_file',
-          description: 'Create or overwrite a UTF-8 text file on disk.',
-          parameters: {
-            type: 'object',
-            properties: {
-              path: {
-                type: 'string',
-                description: 'Absolute path or path relative to the workspace root.',
-              },
-              content: {
-                type: 'string',
-                description: 'Full file contents to write.',
-              },
+        name: 'write_file',
+        description: 'Create or overwrite a UTF-8 text file on disk.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            path: {
+              type: 'string',
+              description: 'Absolute path or path relative to the workspace root.',
             },
-            required: ['path', 'content'],
-            additionalProperties: false,
+            content: {
+              type: 'string',
+              description: 'Full file contents to write.',
+            },
           },
-          parse: (input: string) => parseJson<WriteFileArgs>(input),
-          function: (args: WriteFileArgs) => runInstrumentedTool('write_file', args, writeFileTool),
+          required: ['path', 'content'],
+          additionalProperties: false,
         },
+        execute: (args: unknown) => runInstrumentedTool('write_file', args as WriteFileArgs, writeFileTool),
       },
       {
-        type: 'function',
-        function: {
-          name: 'execute_terminal',
-          description:
-            'Run a terminal command. Use it for builds, tests, inspections, package installs, git commands, or scripts.',
-          parameters: {
-            type: 'object',
-            properties: {
-              command: {
-                type: 'string',
-                description: 'The exact command to run in the system shell.',
-              },
-              cwd: {
-                type: 'string',
-                description: 'Optional working directory, absolute or relative to the workspace root.',
-              },
+        name: 'execute_terminal',
+        description: 'Run a terminal command. Use it for builds, tests, inspections, package installs, git commands, or scripts.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            command: {
+              type: 'string',
+              description: 'The exact command to run in the system shell.',
             },
-            required: ['command'],
-            additionalProperties: false,
+            cwd: {
+              type: 'string',
+              description: 'Optional working directory, absolute or relative to the workspace root.',
+            },
           },
-          parse: (input: string) => parseJson<ExecuteTerminalArgs>(input),
-          function: (args: ExecuteTerminalArgs) => runInstrumentedTool('execute_terminal', args, executeTerminalTool),
+          required: ['command'],
+          additionalProperties: false,
         },
+        execute: (args: unknown) => runInstrumentedTool('execute_terminal', args as ExecuteTerminalArgs, executeTerminalTool),
       },
     ];
 
     if (this.automationTooling) {
-      tools.push(
+      definitions.push(
         {
-          type: 'function',
-          function: {
-            name: 'list_automations',
-            description: 'List all saved recurring automations.',
-            parameters: {
-              type: 'object',
-              properties: {},
-              additionalProperties: false,
-            },
-            parse: () => ({}),
-            function: async () =>
-              safeJson(
-                await this.automationTooling!.listAutomations().then((automations) =>
-                  automations.map((automation) => ({
-                    id: automation.id,
-                    name: automation.name,
-                    status: automation.status,
-                    schedule: automation.schedule,
-                    nextRunAt: automation.nextRunAt ?? null,
-                    lastRunAt: automation.lastRunAt ?? null,
-                    lastRunStatus: automation.lastRunStatus ?? null,
-                    lastResultSummary: automation.lastResultSummary ?? null,
-                  })),
-                ),
+          name: 'list_automations',
+          description: 'List all saved recurring automations.',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+            additionalProperties: false,
+          },
+          execute: async () =>
+            safeJson(
+              await this.automationTooling!.listAutomations().then((automations) =>
+                automations.map((automation) => ({
+                  id: automation.id,
+                  name: automation.name,
+                  status: automation.status,
+                  schedule: automation.schedule,
+                  nextRunAt: automation.nextRunAt ?? null,
+                  lastRunAt: automation.lastRunAt ?? null,
+                  lastRunStatus: automation.lastRunStatus ?? null,
+                  lastResultSummary: automation.lastResultSummary ?? null,
+                })),
               ),
-          },
+            ),
         },
         {
-          type: 'function',
-          function: {
-            name: 'create_automation',
-            description: 'Create a recurring automation that can run later without additional context.',
-            parameters: {
-              type: 'object',
-              properties: {
-                name: { type: 'string' },
-                prompt: { type: 'string' },
-                schedule: {
-                  type: 'object',
-                  properties: {
-                    kind: { type: 'string', enum: ['interval', 'daily', 'weekly'] },
-                    intervalMinutes: { type: 'number' },
-                    hour: { type: 'number' },
-                    minute: { type: 'number' },
-                    weekdays: {
-                      type: 'array',
-                      items: { type: 'number', enum: [0, 1, 2, 3, 4, 5, 6] },
-                    },
+          name: 'create_automation',
+          description: 'Create a recurring automation that can run later without additional context.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              prompt: { type: 'string' },
+              schedule: {
+                type: 'object',
+                properties: {
+                  kind: { type: 'string', enum: ['interval', 'daily', 'weekly'] },
+                  intervalMinutes: { type: 'number' },
+                  hour: { type: 'number' },
+                  minute: { type: 'number' },
+                  weekdays: {
+                    type: 'array',
+                    items: { type: 'number', enum: [0, 1, 2, 3, 4, 5, 6] },
                   },
-                  required: ['kind'],
-                  additionalProperties: false,
                 },
+                required: ['kind'],
+                additionalProperties: false,
               },
-              required: ['name', 'prompt', 'schedule'],
-              additionalProperties: false,
             },
-            parse: (input: string) => parseJson<CreateAutomationInput>(input),
-            function: async (args: CreateAutomationInput) =>
-              safeJson(await this.automationTooling!.createAutomation(args)),
+            required: ['name', 'prompt', 'schedule'],
+            additionalProperties: false,
           },
+          execute: async (args: unknown) => safeJson(await this.automationTooling!.createAutomation(args as CreateAutomationInput)),
         },
         {
-          type: 'function',
-          function: {
-            name: 'update_automation',
-            description: 'Update an existing automation. You can rename it, pause/resume it, or adjust its schedule.',
-            parameters: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                name: { type: 'string' },
-                prompt: { type: 'string' },
-                schedule: {
-                  type: 'object',
-                  properties: {
-                    kind: { type: 'string', enum: ['interval', 'daily', 'weekly'] },
-                    intervalMinutes: { type: 'number' },
-                    hour: { type: 'number' },
-                    minute: { type: 'number' },
-                    weekdays: {
-                      type: 'array',
-                      items: { type: 'number', enum: [0, 1, 2, 3, 4, 5, 6] },
-                    },
+          name: 'update_automation',
+          description: 'Update an existing automation. You can rename it, pause/resume it, or adjust its schedule.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              name: { type: 'string' },
+              prompt: { type: 'string' },
+              schedule: {
+                type: 'object',
+                properties: {
+                  kind: { type: 'string', enum: ['interval', 'daily', 'weekly'] },
+                  intervalMinutes: { type: 'number' },
+                  hour: { type: 'number' },
+                  minute: { type: 'number' },
+                  weekdays: {
+                    type: 'array',
+                    items: { type: 'number', enum: [0, 1, 2, 3, 4, 5, 6] },
                   },
-                  required: ['kind'],
-                  additionalProperties: false,
                 },
-                status: { type: 'string', enum: ['active', 'paused'] },
+                required: ['kind'],
+                additionalProperties: false,
               },
-              required: ['id'],
-              additionalProperties: false,
+              status: { type: 'string', enum: ['active', 'paused'] },
             },
-            parse: (input: string) => parseJson<UpdateAutomationInput>(input),
-            function: async (args: UpdateAutomationInput) =>
-              safeJson(await this.automationTooling!.updateAutomation(args)),
+            required: ['id'],
+            additionalProperties: false,
+          },
+          execute: async (args: unknown) => safeJson(await this.automationTooling!.updateAutomation(args as UpdateAutomationInput)),
+        },
+        {
+          name: 'delete_automation',
+          description: 'Delete an automation permanently.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              automationId: { type: 'string' },
+            },
+            required: ['automationId'],
+            additionalProperties: false,
+          },
+          execute: async (args: unknown) => {
+            const automationId = (args as { automationId: string }).automationId;
+            await this.automationTooling!.deleteAutomation(automationId);
+            return 'Automation deleted.';
           },
         },
         {
-          type: 'function',
-          function: {
-            name: 'delete_automation',
-            description: 'Delete an automation permanently.',
-            parameters: {
-              type: 'object',
-              properties: {
-                automationId: { type: 'string' },
-              },
-              required: ['automationId'],
-              additionalProperties: false,
+          name: 'run_automation',
+          description: 'Run an automation immediately without waiting for its next schedule.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              automationId: { type: 'string' },
             },
-            parse: (input: string) => parseJson<{ automationId: string }>(input),
-            function: async (args: { automationId: string }) => {
-              await this.automationTooling!.deleteAutomation(args.automationId);
-              return 'Automation deleted.';
-            },
+            required: ['automationId'],
+            additionalProperties: false,
           },
-        },
-        {
-          type: 'function',
-          function: {
-            name: 'run_automation',
-            description: 'Run an automation immediately without waiting for its next schedule.',
-            parameters: {
-              type: 'object',
-              properties: {
-                automationId: { type: 'string' },
-              },
-              required: ['automationId'],
-              additionalProperties: false,
-            },
-            parse: (input: string) => parseJson<{ automationId: string }>(input),
-            function: async (args: { automationId: string }) =>
-              safeJson(await this.automationTooling!.runAutomation(args.automationId)),
+          execute: async (args: unknown) => {
+            const automationId = (args as { automationId: string }).automationId;
+            return safeJson(await this.automationTooling!.runAutomation(automationId));
           },
         },
       );
     }
 
-    const runner = client.chat.completions.runTools(
-      {
-        model: config.model,
-        stream: true,
-        messages: session.messages,
-        parallel_tool_calls: false,
-        tool_choice: 'auto',
-        tools: tools as never,
-      },
-      {
-        maxChatCompletions: 12,
-      },
-    ) as ReturnType<OpenAI['chat']['completions']['runTools']>;
+    return definitions;
+  }
 
-    this.activeRunners.set(requestId, runner);
+  private toAnthropicMessages(messages: ChatCompletionMessageParam[]): Anthropic.MessageParam[] {
+    return messages
+      .filter((message) => message.role === 'user' || message.role === 'assistant')
+      .map((message) => ({
+        role: message.role,
+        content: stringifyContent(message.content),
+      }))
+      .filter((message) => message.content.trim().length > 0);
+  }
 
-    runner.on('content', (delta: string, snapshot: string) => {
-      contentSnapshot = snapshot;
-      emitEvent({
-        type: 'assistant.delta',
-        requestId,
-        delta,
-      });
-    });
-
-    runner.on('abort', () => {
-      emitEvent({
-        type: 'chat.cancelled',
-        requestId,
-        finishedAt: nowIso(),
-      });
-    });
-
-    runner.on('error', (error) => {
-      emitEvent({
-        type: 'chat.error',
-        requestId,
-        message: error.message,
-        finishedAt: nowIso(),
-      });
-    });
-
-    try {
-      await runner.finalChatCompletion();
-      if (abortController.signal.aborted) {
-        return;
+  private toGeminiContents(messages: ChatCompletionMessageParam[]): Content[] {
+    return messages.flatMap((message) => {
+      const content = stringifyContent(message.content);
+      if (!content.trim()) {
+        return [];
       }
-      session.messages = [...runner.messages];
-      await this.persistSession(sessionId, session);
 
-      emitEvent({
-        type: 'assistant.completed',
-        requestId,
-        content: contentSnapshot,
-        finishedAt: nowIso(),
-      });
-    } catch (error) {
-      if (abortController.signal.aborted) {
-        return;
+      if (message.role === 'user') {
+        return [createUserContent(content)];
       }
-      const messageText = error instanceof Error ? error.message : 'Unknown OpenAI error';
-      emitEvent({
-        type: 'chat.error',
-        requestId,
-        message: messageText,
-        finishedAt: nowIso(),
-      });
-    } finally {
-      this.activeRunners.delete(requestId);
-      this.activeAbortControllers.delete(requestId);
-    }
+
+      if (message.role === 'assistant') {
+        return [createModelContent(content)];
+      }
+
+      return [];
+    });
   }
 
-  public async listAvailableModels(config: AppConfig): Promise<ModelCatalogResult> {
-    const provider = getProviderPreset(config.providerId);
-    const baseUrl = resolveBaseUrl(provider.id, config.baseUrl);
-    const fallbackModels = dedupeAndSortModels([], provider.popularModels);
-    const apiKey = config.apiKey.trim();
-
-    if (!apiKey && !isApiKeyOptionalForProvider(provider.id, baseUrl)) {
-      return {
-        providerId: provider.id,
-        providerLabel: provider.label,
-        baseUrl,
-        source: 'preset-fallback',
-        fetchedAt: nowCatalogIso(),
-        warning: `No API key is configured for ${provider.label}, so showing preset models only.`,
-        models: fallbackModels,
-      };
-    }
-
-    if (provider.supportsModelDiscovery === false) {
-      return {
-        providerId: provider.id,
-        providerLabel: provider.label,
-        baseUrl,
-        source: 'preset-fallback',
-        fetchedAt: nowCatalogIso(),
-        warning: `${provider.label} does not expose reliable model discovery through this transport yet.`,
-        models: fallbackModels,
-      };
-    }
-
-    try {
-      const client = buildClient(config);
-      const response = await client.models.list();
-      const liveModels = dedupeAndSortModels(
-        response.data.map<AvailableModelRecord>((model) => ({
-          id: model.id,
-          ownedBy: typeof model.owned_by === 'string' ? model.owned_by : undefined,
-        })),
-        provider.popularModels,
-      );
-
-      return {
-        providerId: provider.id,
-        providerLabel: provider.label,
-        baseUrl,
-        source: 'live',
-        fetchedAt: nowCatalogIso(),
-        models: liveModels,
-        warning: liveModels.length === 0 ? 'The provider returned no models, so preset suggestions were merged in.' : undefined,
-      };
-    } catch (error) {
-      const messageText = error instanceof Error ? error.message : 'Unknown model catalog error';
-      return {
-        providerId: provider.id,
-        providerLabel: provider.label,
-        baseUrl,
-        source: 'preset-fallback',
-        fetchedAt: nowCatalogIso(),
-        warning: `Live model discovery failed: ${messageText}`,
-        models: fallbackModels,
-      };
-    }
-  }
-
-  public async cancelChat(requestId: string): Promise<void> {
-    this.activeAbortControllers.get(requestId)?.abort();
-    const runner = this.activeRunners.get(requestId);
-    runner?.abort();
-    this.activeRunners.delete(requestId);
-    this.activeAbortControllers.delete(requestId);
-  }
-
-  public async resetSession(sessionId: string, config: AppConfig): Promise<void> {
-    await this.initializationPromise;
-    const session: Session = {
-      prompt: buildPrompt(config.systemPrompt),
-      messages: [
-        {
-          role: 'developer',
-          content: buildPrompt(config.systemPrompt),
-        },
-      ],
+  private createStoredToolMessage(requestId: string, toolName: string, content: string): ChatCompletionMessageParam {
+    return {
+      role: 'tool',
+      tool_call_id: `${requestId}:${toolName}:${Date.now()}`,
+      content,
     };
-
-    this.sessions.set(sessionId, session);
-    await this.persistSession(sessionId, session);
-  }
-
-  public async deleteSession(sessionId: string): Promise<void> {
-    await this.initializationPromise;
-    this.sessions.delete(sessionId);
-    await this.sessionStore.delete(sessionId);
   }
 
   private ensureSession(sessionId: string, prompt: string): Session {

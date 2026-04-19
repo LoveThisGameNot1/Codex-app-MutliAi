@@ -2,7 +2,7 @@
 
 Eine Electron-Desktop-App im Stil von Cursor oder Claude Artifacts mit:
 
-- Streaming-Chat gegen mehrere LLM-Anbieter ueber OpenAI-kompatible APIs
+- Streaming-Chat gegen mehrere LLM-Anbieter, inklusive nativer Anthropic- und Gemini-Adapter auf den offiziellen Endpunkten
 - Tool-Calling fuer Dateisystem und Terminal
 - Echtzeit-Parsing von `<artifact>`-Tags
 - Monaco Code View fuer Artefakte
@@ -40,7 +40,7 @@ npm run dev
 ```
 
 Optional koennen Provider-Keys auch ueber `.env.example` bzw. eine `.env` gesetzt werden.
-Fuer Anthropic und Gemini nutzt die App die offiziellen OpenAI-Kompatibilitaetsendpunkte; das ist praktisch fuer eine einheitliche Tool- und Streaming-Pipeline, ersetzt aber nicht alle nativen Anbieter-Features.
+Fuer Anthropic und Gemini nutzt die App auf den offiziellen Preset-Endpunkten native SDK-Adapter fuer Streaming und Tool-Calling. Wenn du die Base URL auf einen Gateway oder Proxy aenderst, faellt die App automatisch auf den OpenAI-kompatiblen Transport zurueck, damit benutzerdefinierte Endpunkte weiter funktionieren.
 Fuer viele kompatible Anbieter kann die App ausserdem live die verfuegbaren Modelle vom aktuellen Endpoint laden und als waehlbare Modellbibliothek anzeigen.
 
 ## Produktionstest
