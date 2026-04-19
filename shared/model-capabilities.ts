@@ -1,6 +1,13 @@
 import type { AppConfig, ModelCapabilityAssessment, ModelCapabilityLevel } from './contracts';
 import { getProviderPreset, resolveBaseUrl, type LlmProviderId } from './provider-presets';
 
+export type DiscoveredModelCapabilityMetadata = {
+  supportedGenerationMethods?: string[];
+  supportedParameters?: string[];
+  outputModalities?: string[];
+  sourceLabel?: string;
+};
+
 const normalizeBaseUrl = (input: string): string => input.trim().replace(/\/+$/, '').toLowerCase();
 const normalizeModelId = (input: string): string => input.trim().toLowerCase();
 
@@ -37,6 +44,16 @@ const NON_AGENT_MODEL_PATTERNS = [
   'audio',
   'sdxl',
   'stable-diffusion',
+];
+
+const GEMINI_FUNCTION_CALLING_SUPPORTED_PREFIXES = [
+  'gemini-3.1-pro',
+  'gemini-3.1-flash-lite',
+  'gemini-3-flash',
+  'gemini-2.5-pro',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
 ];
 
 const isOfficialPresetEndpoint = (providerId: string, baseUrl: string): boolean => {
@@ -219,6 +236,64 @@ export const inferModelCapabilities = (
       return createAssessment('unknown', 'unknown', ['This provider is not profiled yet.'], transport);
     }
   }
+};
+
+export const inferDiscoveredModelCapabilities = (
+  providerId: string,
+  modelId: string,
+  baseUrl: string,
+  metadata: DiscoveredModelCapabilityMetadata,
+): ModelCapabilityAssessment => {
+  const fallback = inferModelCapabilities(providerId, modelId, baseUrl);
+  const notes = [...fallback.notes];
+
+  if (metadata.sourceLabel) {
+    notes.unshift(`Provider metadata source: ${metadata.sourceLabel}.`);
+  }
+
+  if (providerId === 'gemini') {
+    const supportedActions = new Set((metadata.supportedGenerationMethods ?? []).map((entry) => entry.trim()));
+    const canGenerateContent = supportedActions.has('generateContent');
+    const normalizedModelId = normalizeModelId(modelId);
+    const functionCallingSupported = GEMINI_FUNCTION_CALLING_SUPPORTED_PREFIXES.some((prefix) =>
+      normalizedModelId.startsWith(prefix),
+    );
+
+    if (!canGenerateContent) {
+      notes.push('Gemini model metadata does not list generateContent support, so chat streaming is not a safe assumption.');
+      return createAssessment('limited', 'limited', notes, fallback.transport);
+    }
+
+    if (functionCallingSupported) {
+      notes.push('The Gemini models.list metadata confirms generateContent support, and this model family is documented for function calling.');
+      return createAssessment('supported', 'supported', notes, fallback.transport);
+    }
+
+    notes.push('Gemini metadata confirms text generation, but this model family is not listed in the documented function-calling support matrix.');
+    return createAssessment('supported', 'limited', notes, fallback.transport);
+  }
+
+  if (providerId === 'openrouter') {
+    const supportedParameters = new Set((metadata.supportedParameters ?? []).map((entry) => entry.trim()));
+    const outputModalities = new Set((metadata.outputModalities ?? []).map((entry) => entry.trim()));
+    const supportsText = outputModalities.size === 0 || outputModalities.has('text');
+    const supportsTools = supportedParameters.has('tools');
+
+    if (!supportsText) {
+      notes.push('OpenRouter metadata says this model does not expose text output, so the app agent workflow is not a fit.');
+      return createAssessment('limited', 'limited', notes, 'gateway-unknown');
+    }
+
+    if (supportsTools) {
+      notes.push('OpenRouter metadata confirms support for the tools parameter on this model.');
+      return createAssessment('likely', 'supported', notes, 'gateway-unknown');
+    }
+
+    notes.push('OpenRouter metadata did not advertise tool parameters for this model, so tool calling is treated as limited.');
+    return createAssessment('likely', 'limited', notes, 'gateway-unknown');
+  }
+
+  return fallback;
 };
 
 export const inferConfiguredModelCapabilities = (config: AppConfig): ModelCapabilityAssessment =>

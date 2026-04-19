@@ -24,7 +24,6 @@ export const SettingsPanel = () => {
 
   const workspaceLabel = useMemo(() => appInfo?.workspaceRoot || 'Unavailable', [appInfo]);
   const providerPreset = useMemo(() => getProviderPreset(config.providerId), [config.providerId]);
-  const selectedModelCapabilities = useMemo(() => inferConfiguredModelCapabilities(config), [config]);
   const apiKeyOptional = useMemo(
     () => isApiKeyOptionalForProvider(config.providerId, config.baseUrl),
     [config.baseUrl, config.providerId],
@@ -32,6 +31,10 @@ export const SettingsPanel = () => {
   const [modelCatalog, setModelCatalog] = useState<ModelCatalogResult | null>(null);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  const selectedModelCapabilities = useMemo(() => {
+    const discoveredModel = modelCatalog?.models.find((model) => model.id === config.model);
+    return discoveredModel?.capabilities ?? inferConfiguredModelCapabilities(config);
+  }, [config, modelCatalog]);
   const latestModelRequestId = useRef(0);
   const autoRefreshKey = useMemo(
     () => `${config.providerId}::${config.baseUrl.trim()}::${config.apiKey}`,

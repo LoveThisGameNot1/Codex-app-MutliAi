@@ -9,6 +9,7 @@ import {
   type Content,
   type FunctionCall,
   type FunctionDeclaration,
+  type Model as GeminiModel,
   type Part,
 } from '@google/genai';
 import OpenAI from 'openai';
@@ -26,7 +27,7 @@ import {
   ToolExecutionRecord,
   UpdateAutomationInput,
 } from '../shared/contracts';
-import { inferModelCapabilities } from '../shared/model-capabilities';
+import { inferDiscoveredModelCapabilities, inferModelCapabilities } from '../shared/model-capabilities';
 import { dedupeAndSortModels } from '../shared/model-catalog';
 import {
   getProviderPreset,
@@ -214,6 +215,64 @@ export class LlmService {
       };
     }
 
+    if (provider.id === 'gemini' && this.shouldUseNativeGemini(config)) {
+      try {
+        const liveModels = await this.listNativeGeminiModels(config, baseUrl, provider.popularModels);
+        return {
+          providerId: provider.id,
+          providerLabel: provider.label,
+          baseUrl,
+          source: 'live',
+          fetchedAt: nowCatalogIso(),
+          models: liveModels,
+          warning: liveModels.length === 0 ? 'Gemini returned no generateContent-capable models, so preset suggestions were merged in.' : undefined,
+        };
+      } catch (error) {
+        const messageText = error instanceof Error ? error.message : 'Unknown Gemini model catalog error';
+        return {
+          providerId: provider.id,
+          providerLabel: provider.label,
+          baseUrl,
+          source: 'preset-fallback',
+          fetchedAt: nowCatalogIso(),
+          warning: `Live Gemini model discovery failed: ${messageText}`,
+          models: fallbackModels.map((model) => ({
+            ...model,
+            capabilities: inferModelCapabilities(provider.id, model.id, baseUrl),
+          })),
+        };
+      }
+    }
+
+    if (provider.id === 'openrouter') {
+      try {
+        const liveModels = await this.listOpenRouterModels(config, baseUrl, provider.popularModels);
+        return {
+          providerId: provider.id,
+          providerLabel: provider.label,
+          baseUrl,
+          source: 'live',
+          fetchedAt: nowCatalogIso(),
+          models: liveModels,
+          warning: liveModels.length === 0 ? 'OpenRouter returned no text-capable models, so preset suggestions were merged in.' : undefined,
+        };
+      } catch (error) {
+        const messageText = error instanceof Error ? error.message : 'Unknown OpenRouter model catalog error';
+        return {
+          providerId: provider.id,
+          providerLabel: provider.label,
+          baseUrl,
+          source: 'preset-fallback',
+          fetchedAt: nowCatalogIso(),
+          warning: `Live OpenRouter model discovery failed: ${messageText}`,
+          models: fallbackModels.map((model) => ({
+            ...model,
+            capabilities: inferModelCapabilities(provider.id, model.id, baseUrl),
+          })),
+        };
+      }
+    }
+
     try {
       const client = buildOpenAIClient(config);
       const response = await client.models.list();
@@ -252,6 +311,106 @@ export class LlmService {
         })),
       };
     }
+  }
+
+  private async listNativeGeminiModels(
+    config: AppConfig,
+    baseUrl: string,
+    fallbackModelIds: string[],
+  ): Promise<AvailableModelRecord[]> {
+    const client = new GoogleGenAI({
+      apiKey: config.apiKey.trim(),
+      apiVersion: 'v1beta',
+      httpOptions: {
+        headers: buildDefaultHeaders(config.providerId),
+      },
+    });
+
+    const pager = await client.models.list({
+      config: {
+        pageSize: 200,
+      },
+    });
+
+    const liveModels: AvailableModelRecord[] = [];
+    for await (const model of pager) {
+      const normalized = this.toGeminiAvailableModelRecord(model, baseUrl);
+      if (normalized) {
+        liveModels.push(normalized);
+      }
+    }
+
+    return dedupeAndSortModels(liveModels, fallbackModelIds);
+  }
+
+  private toGeminiAvailableModelRecord(model: GeminiModel, baseUrl: string): AvailableModelRecord | null {
+    const modelId = (model.name || '').replace(/^models\//, '').trim();
+    if (!modelId) {
+      return null;
+    }
+
+    return {
+      id: modelId,
+      ownedBy: 'google',
+      capabilities: inferDiscoveredModelCapabilities('gemini', modelId, baseUrl, {
+        supportedGenerationMethods: model.supportedActions,
+        sourceLabel: 'Gemini models.list supportedGenerationMethods',
+      }),
+    };
+  }
+
+  private async listOpenRouterModels(
+    config: AppConfig,
+    baseUrl: string,
+    fallbackModelIds: string[],
+  ): Promise<AvailableModelRecord[]> {
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      ...(buildDefaultHeaders(config.providerId) ?? {}),
+    };
+
+    const apiKey = config.apiKey.trim();
+    if (apiKey) {
+      headers.Authorization = `Bearer ${apiKey}`;
+    }
+
+    const response = await fetch(`${normalizeBaseUrl(baseUrl)}/models`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenRouter models endpoint returned ${response.status} ${response.statusText}`);
+    }
+
+    const payload = (await response.json()) as {
+      data?: Array<{
+        id?: string;
+        name?: string;
+        supported_parameters?: string[];
+        architecture?: { output_modalities?: string[] };
+      }>;
+    };
+
+    const liveModels = (payload.data ?? [])
+      .map<AvailableModelRecord | null>((model) => {
+        const modelId = model.id?.trim();
+        if (!modelId) {
+          return null;
+        }
+
+        return {
+          id: modelId,
+          ownedBy: modelId.includes('/') ? modelId.split('/')[0] : 'openrouter',
+          capabilities: inferDiscoveredModelCapabilities('openrouter', modelId, baseUrl, {
+            supportedParameters: model.supported_parameters,
+            outputModalities: model.architecture?.output_modalities,
+            sourceLabel: 'OpenRouter models supported_parameters',
+          }),
+        };
+      })
+      .filter((model): model is AvailableModelRecord => model !== null);
+
+    return dedupeAndSortModels(liveModels, fallbackModelIds);
   }
 
   public async cancelChat(requestId: string): Promise<void> {

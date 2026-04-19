@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inferModelCapabilities } from './model-capabilities';
+import { inferDiscoveredModelCapabilities, inferModelCapabilities } from './model-capabilities';
 
 describe('inferModelCapabilities', () => {
   it('marks official Anthropic Claude models as native and supported', () => {
@@ -33,5 +33,28 @@ describe('inferModelCapabilities', () => {
     expect(result.transport).toBe('gateway-unknown');
     expect(result.streaming).toBe('likely');
     expect(result.toolCalling).toBe('likely');
+  });
+
+  it('upgrades OpenRouter tool calling when provider metadata confirms tools support', () => {
+    const result = inferDiscoveredModelCapabilities('openrouter', 'openai/gpt-4o-mini', 'https://openrouter.ai/api/v1', {
+      supportedParameters: ['tools', 'tool_choice', 'max_tokens'],
+      outputModalities: ['text'],
+      sourceLabel: 'OpenRouter models supported_parameters',
+    });
+
+    expect(result.toolCalling).toBe('supported');
+    expect(result.streaming).toBe('likely');
+    expect(result.notes.some((note) => note.includes('Provider metadata source'))).toBe(true);
+  });
+
+  it('downgrades Gemini models that lack generateContent in provider metadata', () => {
+    const result = inferDiscoveredModelCapabilities('gemini', 'embedding-001', 'https://generativelanguage.googleapis.com/v1beta/openai/', {
+      supportedGenerationMethods: ['embedContent'],
+      sourceLabel: 'Gemini models.list supportedGenerationMethods',
+    });
+
+    expect(result.streaming).toBe('limited');
+    expect(result.toolCalling).toBe('limited');
+    expect(result.recommendedForAgent).toBe(false);
   });
 });
