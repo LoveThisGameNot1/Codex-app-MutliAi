@@ -1,0 +1,258 @@
+export const DEFAULT_MODEL = 'gpt-5.4';
+
+export const DEFAULT_SYSTEM_PROMPT = `You are a senior autonomous software engineer operating inside a desktop workspace.
+
+When the user asks for code, apps, UI, or documents, you may optionally create artifacts by emitting XML tags in the exact form:
+<artifact type="code|html|react" title="Readable title" language="ts|tsx|js|html|css|json|md">...content...</artifact>
+
+Artifact rules:
+- Never wrap artifact tags in markdown fences.
+- Keep artifact content self-contained and production-oriented.
+- Use type="react" with language="tsx" for React previews.
+- Use type="html" for standalone HTML/CSS/JS previews.
+- Use type="code" for non-preview code or configs.
+- You may still answer with normal markdown outside artifact tags.
+
+Tool rules:
+- Use read_file before modifying existing files when needed.
+- Use write_file to create or update files.
+- Use execute_terminal for shell commands, diagnostics, installs, builds, tests, and git inspection.
+- Explain risky operations before taking them.
+- When tool results contain errors, reason about them and recover.
+
+Response style:
+- Be concise, practical, and direct.
+- Prefer complete working solutions over partial sketches.
+- If you create an artifact, also explain briefly what it is and how to use it.
+
+Automation rules:
+- You can manage recurring automations with list_automations, create_automation, update_automation, delete_automation, and run_automation.
+- Use automations for repeated checks, follow-up work, scheduled maintenance, or recurring code generation tasks.
+- Keep automation prompts durable and self-contained because they may run later without extra context.`;
+
+export type ArtifactKind = 'code' | 'html' | 'react';
+export type ArtifactStatus = 'streaming' | 'complete' | 'error';
+export type ArtifactViewMode = 'code' | 'preview';
+export type MessageRole = 'user' | 'assistant' | 'tool' | 'system';
+export type MessageStatus = 'idle' | 'streaming' | 'complete' | 'error';
+export type ToolExecutionStatus = 'running' | 'completed' | 'failed';
+export type AutomationStatus = 'active' | 'paused';
+export type AutomationRunStatus = 'running' | 'completed' | 'failed';
+export type AutomationWeekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+export type DesktopAppInfo = {
+  name: string;
+  version: string;
+  platform: NodeJS.Platform;
+  electronVersion: string;
+  chromeVersion: string;
+  nodeVersion: string;
+  workspaceRoot: string;
+};
+
+export type AppConfig = {
+  apiKey: string;
+  model: string;
+  systemPrompt: string;
+};
+
+export type AppConfigUpdate = Partial<AppConfig>;
+
+export type ToolExecutionRecord = {
+  id: string;
+  name: string;
+  argumentsText: string;
+  output?: string;
+  status: ToolExecutionStatus;
+  startedAt: string;
+  finishedAt?: string;
+};
+
+export type ChatMessage = {
+  id: string;
+  role: MessageRole;
+  content: string;
+  createdAt: string;
+  status: MessageStatus;
+  toolExecutionId?: string;
+};
+
+export type ArtifactRecord = {
+  id: string;
+  type: ArtifactKind;
+  title: string;
+  language: string;
+  content: string;
+  status: ArtifactStatus;
+  createdAt: string;
+  updatedAt: string;
+  sourceMessageId: string;
+};
+
+export type StartChatRequest = {
+  requestId: string;
+  sessionId: string;
+  message: string;
+  config: AppConfig;
+};
+
+export type CancelChatRequest = {
+  requestId: string;
+};
+
+export type ResetChatRequest = {
+  sessionId: string;
+};
+
+export type IntervalAutomationSchedule = {
+  kind: 'interval';
+  intervalMinutes: number;
+};
+
+export type DailyAutomationSchedule = {
+  kind: 'daily';
+  hour: number;
+  minute: number;
+};
+
+export type WeeklyAutomationSchedule = {
+  kind: 'weekly';
+  weekdays: AutomationWeekday[];
+  hour: number;
+  minute: number;
+};
+
+export type AutomationSchedule =
+  | IntervalAutomationSchedule
+  | DailyAutomationSchedule
+  | WeeklyAutomationSchedule;
+
+export type AutomationRecord = {
+  id: string;
+  name: string;
+  prompt: string;
+  schedule: AutomationSchedule;
+  status: AutomationStatus;
+  createdAt: string;
+  updatedAt: string;
+  lastRunAt?: string;
+  nextRunAt?: string | null;
+  lastRunStatus?: AutomationRunStatus;
+  lastResultSummary?: string;
+};
+
+export type AutomationRunRecord = {
+  id: string;
+  automationId: string;
+  automationName: string;
+  status: AutomationRunStatus;
+  startedAt: string;
+  finishedAt?: string;
+  summary: string;
+  output?: string;
+  outputCharacters?: number;
+  outputTruncated?: boolean;
+};
+
+export type CreateAutomationInput = {
+  name: string;
+  prompt: string;
+  schedule: AutomationSchedule;
+};
+
+export type UpdateAutomationInput = {
+  id: string;
+  name?: string;
+  prompt?: string;
+  schedule?: AutomationSchedule;
+  status?: AutomationStatus;
+};
+
+export type PersistedSessionSummary = {
+  id: string;
+  prompt: string;
+  title: string;
+  preview: string;
+  updatedAt: string;
+  messageCount: number;
+};
+
+export type PersistedSessionPayload = {
+  id: string;
+  prompt: string;
+  updatedAt: string;
+  messages: Array<{
+    role: 'developer' | 'system' | 'user' | 'assistant' | 'tool';
+    content: string | Array<{ type: 'text'; text: string }>;
+  }>;
+};
+
+export type ChatStreamEvent =
+  | {
+      type: 'chat.started';
+      requestId: string;
+      sessionId: string;
+      startedAt: string;
+      model: string;
+    }
+  | {
+      type: 'assistant.delta';
+      requestId: string;
+      delta: string;
+    }
+  | {
+      type: 'assistant.completed';
+      requestId: string;
+      content: string;
+      finishedAt: string;
+    }
+  | {
+      type: 'tool.started';
+      requestId: string;
+      tool: ToolExecutionRecord;
+    }
+  | {
+      type: 'tool.completed';
+      requestId: string;
+      tool: ToolExecutionRecord;
+    }
+  | {
+      type: 'tool.failed';
+      requestId: string;
+      tool: ToolExecutionRecord;
+    }
+  | {
+      type: 'chat.cancelled';
+      requestId: string;
+      finishedAt: string;
+    }
+  | {
+      type: 'chat.error';
+      requestId: string;
+      message: string;
+      finishedAt: string;
+    };
+
+export type AutomationEvent = {
+  type: 'automation.changed';
+};
+
+export type DesktopApi = {
+  getAppInfo: () => Promise<DesktopAppInfo>;
+  getConfig: () => Promise<AppConfig>;
+  updateConfig: (update: AppConfigUpdate) => Promise<AppConfig>;
+  listSessions: () => Promise<PersistedSessionSummary[]>;
+  loadSession: (sessionId: string) => Promise<PersistedSessionPayload | null>;
+  deleteSession: (sessionId: string) => Promise<void>;
+  listAutomations: () => Promise<AutomationRecord[]>;
+  listAutomationRuns: () => Promise<AutomationRunRecord[]>;
+  createAutomation: (input: CreateAutomationInput) => Promise<AutomationRecord>;
+  updateAutomation: (input: UpdateAutomationInput) => Promise<AutomationRecord>;
+  deleteAutomation: (automationId: string) => Promise<void>;
+  runAutomation: (automationId: string) => Promise<AutomationRunRecord>;
+  startChat: (request: StartChatRequest) => Promise<void>;
+  cancelChat: (request: CancelChatRequest) => Promise<void>;
+  resetChat: (request: ResetChatRequest) => Promise<void>;
+  onChatEvent: (listener: (event: ChatStreamEvent) => void) => () => void;
+  onAutomationEvent: (listener: (event: AutomationEvent) => void) => () => void;
+};
