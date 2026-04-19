@@ -1,7 +1,9 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AutomationPanel } from '@/components/AutomationPanel';
 import { useAppStore } from '@/store/app-store';
 import { chatRuntime } from '@/services/chat-runtime';
+import { listAvailableModels } from '@/services/electron-api';
+import type { ModelCatalogResult } from '../../shared/contracts';
 import {
   getProviderPreset,
   isApiKeyOptionalForProvider,
@@ -25,6 +27,29 @@ export const SettingsPanel = () => {
     () => isApiKeyOptionalForProvider(config.providerId, config.baseUrl),
     [config.baseUrl, config.providerId],
   );
+  const [modelCatalog, setModelCatalog] = useState<ModelCatalogResult | null>(null);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setModelCatalog(null);
+    setModelsError(null);
+    setModelsLoading(false);
+  }, [config.providerId, config.baseUrl]);
+
+  const loadProviderModels = async () => {
+    setModelsLoading(true);
+    setModelsError(null);
+
+    try {
+      const catalog = await listAvailableModels(config);
+      setModelCatalog(catalog);
+    } catch (error) {
+      setModelsError(error instanceof Error ? error.message : 'Unable to load models for this provider right now.');
+    } finally {
+      setModelsLoading(false);
+    }
+  };
 
   if (!isOpen) {
     return null;
@@ -166,9 +191,70 @@ export const SettingsPanel = () => {
         </div>
         {providerPreset.notes ? <p className="mt-3 text-xs text-amber-200/80">{providerPreset.notes}</p> : null}
         <p className="mt-3 text-xs text-slate-500">
-          Presets cover OpenAI, Anthropic, Gemini, OpenRouter, Groq, Together, Fireworks, DeepSeek, xAI, Ollama,
-          plus a custom OpenAI-compatible endpoint.
+          Presets cover OpenAI, Anthropic, Gemini, OpenRouter, Cerebras, SambaNova, DeepInfra, Groq, Together,
+          Fireworks, DeepSeek, xAI, Ollama, plus a custom OpenAI-compatible endpoint.
         </p>
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-sm text-slate-300">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="font-medium text-slate-100">Live Model Catalog</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Load provider models from the current endpoint when supported. Preset suggestions are merged in as a
+              fallback so you always have something selectable.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadProviderModels()}
+            disabled={modelsLoading}
+            className="rounded-full border border-sky-400/30 bg-sky-400/10 px-4 py-2 text-sm font-medium text-sky-100 transition hover:bg-sky-400/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
+          >
+            {modelsLoading ? 'Loading Models...' : 'Load Models'}
+          </button>
+        </div>
+
+        {modelsError ? <p className="mt-3 text-xs text-rose-300">{modelsError}</p> : null}
+        {modelCatalog?.warning ? <p className="mt-3 text-xs text-amber-200/80">{modelCatalog.warning}</p> : null}
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+          <span>Source: {modelCatalog?.source === 'live' ? 'live provider lookup' : 'preset suggestions'}</span>
+          {modelCatalog ? <span>Fetched: {new Date(modelCatalog.fetchedAt).toLocaleString()}</span> : null}
+          {modelCatalog ? <span>Models: {modelCatalog.models.length}</span> : null}
+        </div>
+
+        <div className="mt-4 max-h-56 overflow-y-auto rounded-2xl border border-white/10 bg-black/20 p-3">
+          {!modelCatalog ? (
+            <p className="text-sm text-slate-500">Load the catalog to browse models for the selected provider.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {modelCatalog.models.map((model) => {
+                const active = config.model === model.id;
+                return (
+                  <button
+                    key={model.id}
+                    type="button"
+                    onClick={() =>
+                      updateConfig((current) => ({
+                        ...current,
+                        model: model.id,
+                      }))
+                    }
+                    title={model.ownedBy ? `Owned by ${model.ownedBy}` : model.id}
+                    className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                      active
+                        ? 'border-emerald-300/40 bg-emerald-300/15 text-emerald-100'
+                        : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                    }`}
+                  >
+                    {model.id}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       <label className="mt-4 flex flex-col gap-2 text-sm text-slate-300">

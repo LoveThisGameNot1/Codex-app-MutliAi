@@ -20,6 +20,7 @@ const desktopApi: DesktopApi = {
   getAppInfo: () => ipcRenderer.invoke('app:get-info'),
   getConfig: (): Promise<AppConfig> => ipcRenderer.invoke('config:get'),
   updateConfig: (update: AppConfigUpdate): Promise<AppConfig> => ipcRenderer.invoke('config:update', update),
+  listAvailableModels: (config: AppConfig) => ipcRenderer.invoke('models:list', config),
   listSessions: (): Promise<PersistedSessionSummary[]> => ipcRenderer.invoke('sessions:list'),
   loadSession: (sessionId: string): Promise<PersistedSessionPayload | null> =>
     ipcRenderer.invoke('sessions:load', sessionId),

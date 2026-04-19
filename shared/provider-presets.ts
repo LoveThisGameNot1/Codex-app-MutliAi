@@ -3,6 +3,9 @@ export type LlmProviderId =
   | 'anthropic'
   | 'gemini'
   | 'openrouter'
+  | 'cerebras'
+  | 'sambanova'
+  | 'deepinfra'
   | 'groq'
   | 'together'
   | 'fireworks'
@@ -21,6 +24,7 @@ export type LlmProviderPreset = {
   suggestedModel: string;
   popularModels: string[];
   notes?: string;
+  supportsModelDiscovery?: boolean;
 };
 
 export const DEFAULT_PROVIDER_ID: LlmProviderId = 'openai';
@@ -64,6 +68,37 @@ export const LLM_PROVIDER_PRESETS: readonly LlmProviderPreset[] = [
     apiKeyEnvVar: 'OPENROUTER_API_KEY',
     suggestedModel: 'openai/gpt-4o-mini',
     popularModels: ['openai/gpt-4o-mini', 'anthropic/claude-3.7-sonnet', 'google/gemini-2.5-pro-preview'],
+    supportsModelDiscovery: true,
+  },
+  {
+    id: 'cerebras',
+    label: 'Cerebras',
+    description: 'OpenAI-compatible ultra-fast inference for hosted open and reasoning models.',
+    baseUrl: 'https://api.cerebras.ai/v1',
+    apiKeyEnvVar: 'CEREBRAS_API_KEY',
+    suggestedModel: 'gpt-oss-120b',
+    popularModels: ['gpt-oss-120b', 'llama3.1-8b', 'qwen-3-235b-a22b-instruct-2507'],
+    supportsModelDiscovery: true,
+  },
+  {
+    id: 'sambanova',
+    label: 'SambaNova',
+    description: 'OpenAI-compatible SambaCloud inference for fast open models and coding workflows.',
+    baseUrl: 'https://api.sambanova.ai/v1',
+    apiKeyEnvVar: 'SAMBANOVA_API_KEY',
+    suggestedModel: 'DeepSeek-V3-0324',
+    popularModels: ['DeepSeek-V3-0324', 'Meta-Llama-3.1-8B-Instruct', 'Llama-4-Maverick-17B-128E-Instruct'],
+    supportsModelDiscovery: true,
+  },
+  {
+    id: 'deepinfra',
+    label: 'DeepInfra',
+    description: 'OpenAI-compatible hosted access to a broad catalog of open-source and multimodal models.',
+    baseUrl: 'https://api.deepinfra.com/v1/openai',
+    apiKeyEnvVar: 'DEEPINFRA_TOKEN',
+    suggestedModel: 'deepseek-ai/DeepSeek-V3',
+    popularModels: ['deepseek-ai/DeepSeek-V3', 'meta-llama/Llama-4-Maverick-17B-128E-Instruct', 'openai/gpt-oss-120b'],
+    supportsModelDiscovery: true,
   },
   {
     id: 'groq',
@@ -73,6 +108,7 @@ export const LLM_PROVIDER_PRESETS: readonly LlmProviderPreset[] = [
     apiKeyEnvVar: 'GROQ_API_KEY',
     suggestedModel: 'openai/gpt-oss-20b',
     popularModels: ['openai/gpt-oss-20b', 'llama-3.3-70b-versatile', 'deepseek-r1-distill-llama-70b'],
+    supportsModelDiscovery: true,
   },
   {
     id: 'together',
@@ -82,6 +118,7 @@ export const LLM_PROVIDER_PRESETS: readonly LlmProviderPreset[] = [
     apiKeyEnvVar: 'TOGETHER_API_KEY',
     suggestedModel: 'Qwen/Qwen3.5-72B-Instruct-Turbo',
     popularModels: ['Qwen/Qwen3.5-72B-Instruct-Turbo', 'deepseek-ai/DeepSeek-R1', 'meta-llama/Llama-3.3-70B-Instruct-Turbo'],
+    supportsModelDiscovery: true,
   },
   {
     id: 'fireworks',
@@ -95,6 +132,7 @@ export const LLM_PROVIDER_PRESETS: readonly LlmProviderPreset[] = [
       'accounts/fireworks/models/deepseek-r1',
       'accounts/fireworks/models/qwen3-235b-a22b',
     ],
+    supportsModelDiscovery: true,
   },
   {
     id: 'deepseek',
@@ -104,6 +142,7 @@ export const LLM_PROVIDER_PRESETS: readonly LlmProviderPreset[] = [
     apiKeyEnvVar: 'DEEPSEEK_API_KEY',
     suggestedModel: 'deepseek-chat',
     popularModels: ['deepseek-chat', 'deepseek-reasoner'],
+    supportsModelDiscovery: true,
   },
   {
     id: 'xai',
@@ -113,6 +152,7 @@ export const LLM_PROVIDER_PRESETS: readonly LlmProviderPreset[] = [
     apiKeyEnvVar: 'XAI_API_KEY',
     suggestedModel: 'grok-4.20-reasoning',
     popularModels: ['grok-4.20-reasoning', 'grok-4', 'grok-3-mini'],
+    supportsModelDiscovery: true,
   },
   {
     id: 'ollama',
@@ -123,6 +163,7 @@ export const LLM_PROVIDER_PRESETS: readonly LlmProviderPreset[] = [
     apiKeyOptional: true,
     suggestedModel: 'gpt-oss:20b',
     popularModels: ['gpt-oss:20b', 'qwen2.5-coder:14b', 'llama3.2:3b'],
+    supportsModelDiscovery: true,
   },
   {
     id: 'custom',
@@ -131,6 +172,7 @@ export const LLM_PROVIDER_PRESETS: readonly LlmProviderPreset[] = [
     baseUrl: DEFAULT_BASE_URL,
     suggestedModel: 'your-model-id',
     popularModels: ['your-model-id'],
+    supportsModelDiscovery: true,
   },
 ] as const;
 

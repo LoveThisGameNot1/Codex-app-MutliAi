@@ -16,6 +16,9 @@ Aktuell gibt es Presets fuer:
 - Anthropic
 - Gemini
 - OpenRouter
+- Cerebras
+- SambaNova
+- DeepInfra
 - Groq
 - Together AI
 - Fireworks AI
@@ -38,6 +41,7 @@ npm run dev
 
 Optional koennen Provider-Keys auch ueber `.env.example` bzw. eine `.env` gesetzt werden.
 Fuer Anthropic und Gemini nutzt die App die offiziellen OpenAI-Kompatibilitaetsendpunkte; das ist praktisch fuer eine einheitliche Tool- und Streaming-Pipeline, ersetzt aber nicht alle nativen Anbieter-Features.
+Fuer viele kompatible Anbieter kann die App ausserdem live die verfuegbaren Modelle vom aktuellen Endpoint laden und als waehlbare Modellbibliothek anzeigen.
 
 ## Produktionstest
 

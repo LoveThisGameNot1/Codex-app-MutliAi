@@ -1,12 +1,15 @@
+import { app } from 'electron';
 import OpenAI from 'openai';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import {
+  AvailableModelRecord,
   AppConfig,
   AutomationRecord,
   AutomationRunRecord,
   ChatStreamEvent,
   CreateAutomationInput,
   DEFAULT_SYSTEM_PROMPT,
+  ModelCatalogResult,
   StartChatRequest,
   ToolExecutionRecord,
   UpdateAutomationInput,
@@ -26,6 +29,7 @@ import {
   isApiKeyOptionalForProvider,
   resolveBaseUrl,
 } from '../shared/provider-presets';
+import { dedupeAndSortModels } from '../shared/model-catalog';
 
 const nowIso = (): string => new Date().toISOString();
 
@@ -65,24 +69,32 @@ Runtime capabilities:
 - Use automation tools when the user asks for repeated work, scheduled checks, or autonomous follow-up runs.`;
 };
 
+const nowCatalogIso = (): string => new Date().toISOString();
+
+const buildDefaultHeaders = (providerId: string): Record<string, string> | undefined => {
+  const defaultHeaders: Record<string, string> = {};
+  const packageVersion = app.getVersion();
+
+  if (providerId === 'openrouter') {
+    defaultHeaders['X-Title'] = 'CodexApp Multi APIs';
+  }
+
+  if (providerId === 'gemini') {
+    defaultHeaders['x-goog-api-client'] = `codexapp-multi-apis/${packageVersion}`;
+  }
+
+  return Object.keys(defaultHeaders).length > 0 ? defaultHeaders : undefined;
+};
+
 const buildClient = (config: AppConfig): OpenAI => {
   const provider = getProviderPreset(config.providerId);
   const baseURL = resolveBaseUrl(provider.id, config.baseUrl);
   const apiKey = config.apiKey.trim() || (isApiKeyOptionalForProvider(provider.id, baseURL) ? 'ollama' : '');
-  const defaultHeaders: Record<string, string> = {};
-
-  if (provider.id === 'openrouter') {
-    defaultHeaders['X-Title'] = 'CodexApp Multi APIs';
-  }
-
-  if (provider.id === 'gemini') {
-    defaultHeaders['x-goog-api-client'] = 'codexapp-multi-apis/0.1.0';
-  }
 
   return new OpenAI({
     apiKey,
     baseURL,
-    defaultHeaders: Object.keys(defaultHeaders).length > 0 ? defaultHeaders : undefined,
+    defaultHeaders: buildDefaultHeaders(provider.id),
   });
 };
 
@@ -477,6 +489,70 @@ export class LlmService {
     } finally {
       this.activeRunners.delete(requestId);
       this.activeAbortControllers.delete(requestId);
+    }
+  }
+
+  public async listAvailableModels(config: AppConfig): Promise<ModelCatalogResult> {
+    const provider = getProviderPreset(config.providerId);
+    const baseUrl = resolveBaseUrl(provider.id, config.baseUrl);
+    const fallbackModels = dedupeAndSortModels([], provider.popularModels);
+    const apiKey = config.apiKey.trim();
+
+    if (!apiKey && !isApiKeyOptionalForProvider(provider.id, baseUrl)) {
+      return {
+        providerId: provider.id,
+        providerLabel: provider.label,
+        baseUrl,
+        source: 'preset-fallback',
+        fetchedAt: nowCatalogIso(),
+        warning: `No API key is configured for ${provider.label}, so showing preset models only.`,
+        models: fallbackModels,
+      };
+    }
+
+    if (provider.supportsModelDiscovery === false) {
+      return {
+        providerId: provider.id,
+        providerLabel: provider.label,
+        baseUrl,
+        source: 'preset-fallback',
+        fetchedAt: nowCatalogIso(),
+        warning: `${provider.label} does not expose reliable model discovery through this transport yet.`,
+        models: fallbackModels,
+      };
+    }
+
+    try {
+      const client = buildClient(config);
+      const response = await client.models.list();
+      const liveModels = dedupeAndSortModels(
+        response.data.map<AvailableModelRecord>((model) => ({
+          id: model.id,
+          ownedBy: typeof model.owned_by === 'string' ? model.owned_by : undefined,
+        })),
+        provider.popularModels,
+      );
+
+      return {
+        providerId: provider.id,
+        providerLabel: provider.label,
+        baseUrl,
+        source: 'live',
+        fetchedAt: nowCatalogIso(),
+        models: liveModels,
+        warning: liveModels.length === 0 ? 'The provider returned no models, so preset suggestions were merged in.' : undefined,
+      };
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : 'Unknown model catalog error';
+      return {
+        providerId: provider.id,
+        providerLabel: provider.label,
+        baseUrl,
+        source: 'preset-fallback',
+        fetchedAt: nowCatalogIso(),
+        warning: `Live model discovery failed: ${messageText}`,
+        models: fallbackModels,
+      };
     }
   }
 

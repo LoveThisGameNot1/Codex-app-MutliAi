@@ -1,6 +1,7 @@
 import type {
   AppConfig,
   AppConfigUpdate,
+  ModelCatalogResult,
   AutomationEvent,
   AutomationRecord,
   AutomationRunRecord,
@@ -34,6 +35,8 @@ export const getDesktopAppInfo = async (): Promise<DesktopAppInfo | null> => {
 export const getConfig = (): Promise<AppConfig> => requireDesktopApi().getConfig();
 export const updateConfig = (update: AppConfigUpdate): Promise<AppConfig> =>
   requireDesktopApi().updateConfig(update);
+export const listAvailableModels = (config: AppConfig): Promise<ModelCatalogResult> =>
+  requireDesktopApi().listAvailableModels(config);
 export const listSessions = (): Promise<PersistedSessionSummary[]> => requireDesktopApi().listSessions();
 export const loadSession = (sessionId: string): Promise<PersistedSessionPayload | null> =>
   requireDesktopApi().loadSession(sessionId);

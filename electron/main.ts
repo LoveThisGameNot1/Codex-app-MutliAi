@@ -86,6 +86,7 @@ const registerIpcHandlers = (): void => {
 
   ipcMain.handle('config:get', () => configStore.get());
   ipcMain.handle('config:update', (_event, update: AppConfigUpdate) => configStore.update(update));
+  ipcMain.handle('models:list', (_event, config) => llmService.listAvailableModels(config));
   ipcMain.handle('sessions:list', async () => {
     const sessions = await sessionStore.loadAll();
     return sessions.map(toSessionSummary);

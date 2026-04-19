@@ -191,6 +191,21 @@ export type PersistedSessionPayload = {
   }>;
 };
 
+export type AvailableModelRecord = {
+  id: string;
+  ownedBy?: string;
+};
+
+export type ModelCatalogResult = {
+  providerId: string;
+  providerLabel: string;
+  baseUrl: string;
+  source: 'live' | 'preset-fallback';
+  fetchedAt: string;
+  warning?: string;
+  models: AvailableModelRecord[];
+};
+
 export type ChatStreamEvent =
   | {
       type: 'chat.started';
@@ -245,6 +260,7 @@ export type DesktopApi = {
   getAppInfo: () => Promise<DesktopAppInfo>;
   getConfig: () => Promise<AppConfig>;
   updateConfig: (update: AppConfigUpdate) => Promise<AppConfig>;
+  listAvailableModels: (config: AppConfig) => Promise<ModelCatalogResult>;
   listSessions: () => Promise<PersistedSessionSummary[]>;
   loadSession: (sessionId: string) => Promise<PersistedSessionPayload | null>;
   deleteSession: (sessionId: string) => Promise<void>;

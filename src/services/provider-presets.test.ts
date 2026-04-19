@@ -29,6 +29,12 @@ describe('provider-presets', () => {
     expect(getProviderPreset('gemini').baseUrl).toBe('https://generativelanguage.googleapis.com/v1beta/openai/');
   });
 
+  it('includes additional hosted OpenAI-compatible providers for broader coverage', () => {
+    expect(getProviderPreset('cerebras').baseUrl).toBe('https://api.cerebras.ai/v1');
+    expect(getProviderPreset('sambanova').baseUrl).toBe('https://api.sambanova.ai/v1');
+    expect(getProviderPreset('deepinfra').baseUrl).toBe('https://api.deepinfra.com/v1/openai');
+  });
+
   it('exposes quick-pick models for each provider preset', () => {
     expect(LLM_PROVIDER_PRESETS.every((preset) => preset.popularModels.length > 0)).toBe(true);
   });
