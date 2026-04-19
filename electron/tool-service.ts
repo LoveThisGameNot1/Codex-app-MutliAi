@@ -177,12 +177,11 @@ export const executeTerminalTool = async (
     throw new Error('Command must not be empty.');
   }
 
-  const violation = getTerminalPolicyViolation(getToolPolicy(context), command);
+  const cwd = args.cwd ? resolveInputPath(args.cwd, context.workspaceRoot) : context.workspaceRoot;
+  const violation = getTerminalPolicyViolation(getToolPolicy(context), command, cwd, context.workspaceRoot);
   if (violation) {
     throw new Error(violation.message);
   }
-
-  const cwd = args.cwd ? resolveInputPath(args.cwd, context.workspaceRoot) : context.workspaceRoot;
   const result = await execCommand(command, cwd, context.signal);
 
   return JSON.stringify(

@@ -37,12 +37,19 @@ describe('tool-policy', () => {
   it('detects risky terminal commands and asks for approval by default', () => {
     expect(isRiskyTerminalCommand('git reset --hard HEAD')).toBe(true);
 
-    const violation = getTerminalPolicyViolation(DEFAULT_TOOL_POLICY, 'git reset --hard HEAD');
+    const violation = getTerminalPolicyViolation(DEFAULT_TOOL_POLICY, 'git reset --hard HEAD', 'C:\\workspace', 'C:\\workspace');
     expect(violation?.mode).toBe('ask');
   });
 
   it('allows safe terminal commands when the base terminal policy is allow', () => {
-    const violation = getTerminalPolicyViolation(DEFAULT_TOOL_POLICY, 'npm run test');
+    const violation = getTerminalPolicyViolation(DEFAULT_TOOL_POLICY, 'npm run test', 'C:\\workspace', 'C:\\workspace');
     expect(violation).toBeNull();
+  });
+
+  it('requires approval for terminal runs outside the workspace by default', () => {
+    const violation = getTerminalPolicyViolation(DEFAULT_TOOL_POLICY, 'npm run test', 'C:\\outside', 'C:\\workspace');
+
+    expect(violation?.mode).toBe('ask');
+    expect(violation?.message).toContain('outside the workspace');
   });
 });

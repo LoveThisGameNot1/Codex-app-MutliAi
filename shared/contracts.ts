@@ -70,6 +70,7 @@ export type ToolPolicyConfig = {
   writeFile: ToolAccessMode;
   outsideWorkspaceWrites: ToolAccessMode;
   executeTerminal: ToolAccessMode;
+  outsideWorkspaceTerminal: ToolAccessMode;
   riskyTerminal: ToolAccessMode;
 };
 

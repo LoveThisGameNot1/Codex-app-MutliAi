@@ -4,6 +4,7 @@ import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, describe, expect, it } from 'vitest';
 import { executeTerminalTool, readFileTool, writeFileTool } from '../../electron/tool-service';
+import { DEFAULT_TOOL_POLICY } from '../../shared/tool-policy';
 
 const tempDirs: string[] = [];
 
@@ -96,5 +97,24 @@ describe('tool-service', () => {
 
     expect(parsed.exitCode).toBe(130);
     expect(parsed.stderr).toContain('cancelled');
+  });
+
+  it('blocks terminal execution outside the workspace when policy requires approval', async () => {
+    const workspaceRoot = await createWorkspace();
+    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexapp-tools-outside-'));
+    tempDirs.push(outsideDir);
+
+    await expect(
+      executeTerminalTool(
+        {
+          command: process.platform === 'win32' ? 'Write-Output hello' : 'echo hello',
+          cwd: outsideDir,
+        },
+        {
+          workspaceRoot,
+          toolPolicy: DEFAULT_TOOL_POLICY,
+        },
+      ),
+    ).rejects.toThrow('Approval required by tool policy');
   });
 });

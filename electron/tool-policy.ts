@@ -86,10 +86,19 @@ export const getWritePolicyViolation = (
 export const getTerminalPolicyViolation = (
   policyInput: ToolPolicyConfig,
   command: string,
+  cwd: string,
+  workspaceRoot: string,
 ): ToolPolicyViolation | null => {
   const policy = normalizeToolPolicy(policyInput);
   if (policy.executeTerminal !== 'allow') {
     return buildViolation(policy.executeTerminal, 'execute_terminal is not fully allowed in the current tool policy.');
+  }
+
+  if (!isWithinWorkspace(cwd, workspaceRoot) && policy.outsideWorkspaceTerminal !== 'allow') {
+    return buildViolation(
+      policy.outsideWorkspaceTerminal,
+      `running terminal commands outside the workspace is restricted (${cwd}).`,
+    );
   }
 
   if (isRiskyTerminalCommand(command) && policy.riskyTerminal !== 'allow') {
