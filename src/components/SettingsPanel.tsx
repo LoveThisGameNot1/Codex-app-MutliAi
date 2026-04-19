@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AutomationPanel } from '@/components/AutomationPanel';
 import { useAppStore } from '@/store/app-store';
 import { chatRuntime } from '@/services/chat-runtime';
@@ -30,26 +30,54 @@ export const SettingsPanel = () => {
   const [modelCatalog, setModelCatalog] = useState<ModelCatalogResult | null>(null);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  const latestModelRequestId = useRef(0);
+  const autoRefreshKey = useMemo(
+    () => `${config.providerId}::${config.baseUrl.trim()}::${config.apiKey}`,
+    [config.apiKey, config.baseUrl, config.providerId],
+  );
 
   useEffect(() => {
     setModelCatalog(null);
     setModelsError(null);
     setModelsLoading(false);
-  }, [config.providerId, config.baseUrl]);
+  }, [config.providerId, config.baseUrl, config.apiKey]);
 
-  const loadProviderModels = async () => {
+  const loadProviderModels = useCallback(async () => {
+    const requestId = ++latestModelRequestId.current;
     setModelsLoading(true);
     setModelsError(null);
 
     try {
       const catalog = await listAvailableModels(config);
+      if (latestModelRequestId.current !== requestId) {
+        return;
+      }
       setModelCatalog(catalog);
     } catch (error) {
+      if (latestModelRequestId.current !== requestId) {
+        return;
+      }
       setModelsError(error instanceof Error ? error.message : 'Unable to load models for this provider right now.');
     } finally {
-      setModelsLoading(false);
+      if (latestModelRequestId.current === requestId) {
+        setModelsLoading(false);
+      }
     }
-  };
+  }, [config]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void loadProviderModels();
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [autoRefreshKey, isOpen, loadProviderModels]);
 
   if (!isOpen) {
     return null;
@@ -209,7 +237,8 @@ export const SettingsPanel = () => {
             <p className="font-medium text-slate-100">Live Model Catalog</p>
             <p className="mt-1 text-xs text-slate-500">
               Load provider models from the current endpoint when supported. Preset suggestions are merged in as a
-              fallback so you always have something selectable.
+              fallback so you always have something selectable. The catalog also refreshes automatically when the
+              provider, endpoint, or API key changes.
             </p>
           </div>
           <button
