@@ -12,6 +12,45 @@ import {
   resolveBaseUrl,
 } from '../../shared/provider-presets';
 
+const capabilityToneByLevel = {
+  supported: 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100',
+  likely: 'border-sky-300/30 bg-sky-300/10 text-sky-100',
+  limited: 'border-amber-300/30 bg-amber-300/10 text-amber-100',
+  unknown: 'border-white/10 bg-white/5 text-slate-300',
+} as const;
+
+const transportTone = {
+  native: 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100',
+  compatible: 'border-sky-300/30 bg-sky-300/10 text-sky-100',
+  'gateway-unknown': 'border-amber-300/30 bg-amber-300/10 text-amber-100',
+} as const;
+
+const recommendationTone = (recommended: boolean): string =>
+  recommended
+    ? 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100'
+    : 'border-amber-300/30 bg-amber-300/10 text-amber-100';
+
+const modelChipTone = (
+  active: boolean,
+  recommendedForAgent?: boolean,
+): string => {
+  if (active) {
+    return recommendedForAgent
+      ? 'border-emerald-300/40 bg-emerald-300/15 text-emerald-100 shadow-[0_0_0_1px_rgba(110,231,183,0.12)]'
+      : 'border-amber-300/40 bg-amber-300/15 text-amber-100 shadow-[0_0_0_1px_rgba(253,230,138,0.1)]';
+  }
+
+  if (recommendedForAgent === true) {
+    return 'border-emerald-400/20 bg-emerald-400/5 text-slate-200 hover:bg-emerald-400/10';
+  }
+
+  if (recommendedForAgent === false) {
+    return 'border-amber-400/20 bg-amber-400/5 text-slate-200 hover:bg-amber-400/10';
+  }
+
+  return 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10';
+};
+
 export const SettingsPanel = () => {
   const config = useAppStore((state) => state.config);
   const updateConfig = useAppStore((state) => state.updateConfig);
@@ -191,26 +230,26 @@ export const SettingsPanel = () => {
             <p className="font-medium text-slate-100">Selected Model Health</p>
             <p className="mt-1 text-xs text-slate-500">{selectedModelCapabilities.summary}</p>
           </div>
-          <span
-            className={`rounded-full border px-3 py-1 text-xs ${
-              selectedModelCapabilities.recommendedForAgent
-                ? 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100'
-                : 'border-amber-300/30 bg-amber-300/10 text-amber-100'
-            }`}
-          >
+          <span className={`rounded-full border px-3 py-1 text-xs ${recommendationTone(selectedModelCapabilities.recommendedForAgent)}`}>
             {selectedModelCapabilities.recommendedForAgent ? 'Recommended for agent runs' : 'Use with caution'}
           </span>
         </div>
         <div className="mt-3 flex flex-wrap gap-2 text-xs">
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">
+          <span className={`rounded-full border px-3 py-1 ${capabilityToneByLevel[selectedModelCapabilities.streaming]}`}>
             Streaming: {selectedModelCapabilities.streaming}
           </span>
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">
+          <span className={`rounded-full border px-3 py-1 ${capabilityToneByLevel[selectedModelCapabilities.toolCalling]}`}>
             Tool calling: {selectedModelCapabilities.toolCalling}
           </span>
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">
+          <span className={`rounded-full border px-3 py-1 ${transportTone[selectedModelCapabilities.transport]}`}>
             Transport: {selectedModelCapabilities.transport}
           </span>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-500">
+          <span className="rounded-full border border-emerald-300/20 bg-emerald-300/5 px-3 py-1 text-emerald-100">supported</span>
+          <span className="rounded-full border border-sky-300/20 bg-sky-300/5 px-3 py-1 text-sky-100">likely</span>
+          <span className="rounded-full border border-amber-300/20 bg-amber-300/5 px-3 py-1 text-amber-100">limited</span>
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">unknown</span>
         </div>
         {selectedModelCapabilities.notes.length > 0 ? (
           <div className="mt-3 space-y-1 text-xs text-slate-400">
@@ -300,6 +339,17 @@ export const SettingsPanel = () => {
           {modelCatalog ? <span>Fetched: {new Date(modelCatalog.fetchedAt).toLocaleString()}</span> : null}
           {modelCatalog ? <span>Models: {modelCatalog.models.length}</span> : null}
         </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-500">
+          <span className="rounded-full border border-emerald-300/20 bg-emerald-300/5 px-3 py-1 text-emerald-100">
+            strong agent fit
+          </span>
+          <span className="rounded-full border border-amber-300/20 bg-amber-300/5 px-3 py-1 text-amber-100">
+            caution
+          </span>
+          <span className="rounded-full border border-sky-300/20 bg-sky-300/5 px-3 py-1 text-sky-100">
+            metadata-backed
+          </span>
+        </div>
 
         <div className="mt-4 max-h-56 overflow-y-auto rounded-2xl border border-white/10 bg-black/20 p-3">
           {!modelCatalog ? (
@@ -320,23 +370,30 @@ export const SettingsPanel = () => {
                     }
                     title={
                       model.capabilities
-                        ? `${model.id}\nStreaming: ${model.capabilities.streaming}\nTool calling: ${model.capabilities.toolCalling}`
+                        ? `${model.id}\nStreaming: ${model.capabilities.streaming}\nTool calling: ${model.capabilities.toolCalling}\nTransport: ${model.capabilities.transport}`
                         : model.ownedBy
                           ? `Owned by ${model.ownedBy}`
                           : model.id
                     }
-                    className={`rounded-full border px-3 py-1.5 text-xs transition ${
-                      active
-                        ? 'border-emerald-300/40 bg-emerald-300/15 text-emerald-100'
-                        : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
-                    }`}
+                    className={`rounded-2xl border px-3 py-2 text-left text-xs transition ${modelChipTone(active, model.capabilities?.recommendedForAgent)}`}
                   >
-                    <span>{model.id}</span>
-                    {model.capabilities ? (
-                      <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                        {model.capabilities.streaming}/{model.capabilities.toolCalling}
-                      </span>
-                    ) : null}
+                    <span className="block font-medium">{model.id}</span>
+                    <span className="mt-1 flex flex-wrap gap-1">
+                      {model.capabilities ? (
+                        <>
+                          <span className={`rounded-full border px-2 py-0.5 text-[10px] ${capabilityToneByLevel[model.capabilities.streaming]}`}>
+                            stream {model.capabilities.streaming}
+                          </span>
+                          <span className={`rounded-full border px-2 py-0.5 text-[10px] ${capabilityToneByLevel[model.capabilities.toolCalling]}`}>
+                            tools {model.capabilities.toolCalling}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-slate-400">
+                          no metadata
+                        </span>
+                      )}
+                    </span>
                   </button>
                 );
               })}

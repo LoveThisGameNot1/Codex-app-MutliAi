@@ -19,6 +19,39 @@ export const ChatComposer = () => {
 
   return (
     <div className="rounded-[28px] border border-white/10 bg-slate-900/80 p-4 shadow-panel backdrop-blur">
+      <div className="mb-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.18em]">
+        <span
+          className={`rounded-full border px-3 py-1 ${
+            selectedModelCapabilities.recommendedForAgent
+              ? 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100'
+              : 'border-amber-300/30 bg-amber-300/10 text-amber-100'
+          }`}
+        >
+          {selectedModelCapabilities.recommendedForAgent ? 'agent-ready model' : 'agent-risk model'}
+        </span>
+        <span
+          className={`rounded-full border px-3 py-1 ${
+            selectedModelCapabilities.streaming === 'supported'
+              ? 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100'
+              : selectedModelCapabilities.streaming === 'likely'
+                ? 'border-sky-300/30 bg-sky-300/10 text-sky-100'
+                : 'border-amber-300/30 bg-amber-300/10 text-amber-100'
+          }`}
+        >
+          streaming {selectedModelCapabilities.streaming}
+        </span>
+        <span
+          className={`rounded-full border px-3 py-1 ${
+            selectedModelCapabilities.toolCalling === 'supported'
+              ? 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100'
+              : selectedModelCapabilities.toolCalling === 'likely'
+                ? 'border-sky-300/30 bg-sky-300/10 text-sky-100'
+                : 'border-amber-300/30 bg-amber-300/10 text-amber-100'
+          }`}
+        >
+          tools {selectedModelCapabilities.toolCalling}
+        </span>
+      </div>
       <textarea
         value={composerValue}
         onChange={(event) => setComposerValue(event.target.value)}
