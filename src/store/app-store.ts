@@ -12,6 +12,7 @@ import type {
   ToolExecutionRecord,
 } from '../../shared/contracts';
 import { DEFAULT_BASE_URL, DEFAULT_MODEL, DEFAULT_PROVIDER_ID, DEFAULT_SYSTEM_PROMPT } from '../../shared/contracts';
+import { DEFAULT_TOOL_POLICY, normalizeToolPolicy } from '../../shared/tool-policy';
 
 const nowIso = (): string => new Date().toISOString();
 const createId = (): string =>
@@ -80,7 +81,13 @@ const initialConfig: AppConfig = {
   apiKey: '',
   model: DEFAULT_MODEL,
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
+  toolPolicy: DEFAULT_TOOL_POLICY,
 };
+
+const normalizeConfig = (config: AppConfig): AppConfig => ({
+  ...config,
+  toolPolicy: normalizeToolPolicy(config.toolPolicy),
+});
 
 const sanitizeRecoveredMessages = (messages: ChatMessage[]): ChatMessage[] =>
   messages.map((message) =>
@@ -138,8 +145,11 @@ export const useAppStore = create<AppState>()(
       settingsOpen: false,
       lastError: null,
       setAppInfo: (appInfo) => set({ appInfo }),
-      hydrateConfig: (config) => set({ config }),
-      updateConfig: (updater) => set((state) => ({ config: updater(state.config) })),
+      hydrateConfig: (config) => set({ config: normalizeConfig(config) }),
+      updateConfig: (updater) =>
+        set((state) => ({
+          config: normalizeConfig(updater(normalizeConfig(state.config))),
+        })),
       setComposerValue: (composerValue) => set({ composerValue }),
       setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
       setPersistedSessions: (persistedSessions) => set({ persistedSessions }),

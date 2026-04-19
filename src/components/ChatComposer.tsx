@@ -16,6 +16,10 @@ export const ChatComposer = () => {
     [],
   );
   const selectedModelCapabilities = useMemo(() => inferConfiguredModelCapabilities(config), [config]);
+  const approvalGuardsEnabled = useMemo(
+    () => Object.values(config.toolPolicy).some((mode) => mode !== 'allow'),
+    [config.toolPolicy],
+  );
 
   return (
     <div className="rounded-[28px] border border-white/10 bg-slate-900/80 p-4 shadow-panel backdrop-blur">
@@ -51,6 +55,11 @@ export const ChatComposer = () => {
         >
           tools {selectedModelCapabilities.toolCalling}
         </span>
+        {approvalGuardsEnabled ? (
+          <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-amber-100">
+            approvals active
+          </span>
+        ) : null}
       </div>
       <textarea
         value={composerValue}
@@ -75,6 +84,12 @@ export const ChatComposer = () => {
             <p className="text-xs text-amber-200/80">
               Current model fit: streaming {selectedModelCapabilities.streaming}, tool calling{' '}
               {selectedModelCapabilities.toolCalling}. This model may behave inconsistently for agent-style runs.
+            </p>
+          ) : null}
+          {approvalGuardsEnabled ? (
+            <p className="text-xs text-slate-400">
+              Tool guardrails are active. Some file reads, writes, or shell commands may require an approval step
+              before the agent can continue.
             </p>
           ) : null}
         </div>

@@ -2,6 +2,7 @@ import { app } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { AppConfig, AppConfigUpdate, DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT } from '../shared/contracts';
+import { DEFAULT_TOOL_POLICY, normalizeToolPolicy } from '../shared/tool-policy';
 import {
   DEFAULT_BASE_URL,
   DEFAULT_PROVIDER_ID,
@@ -16,6 +17,7 @@ const defaultConfig = (): AppConfig => ({
   apiKey: getEnvApiKeyForProvider(DEFAULT_PROVIDER_ID),
   model: DEFAULT_MODEL,
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
+  toolPolicy: DEFAULT_TOOL_POLICY,
 });
 
 export class ConfigStore {
@@ -38,6 +40,7 @@ export class ConfigStore {
         apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : getEnvApiKeyForProvider(preset.id),
         model: parsed.model ?? DEFAULT_MODEL,
         systemPrompt: parsed.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
+        toolPolicy: normalizeToolPolicy(parsed.toolPolicy),
       };
     } catch {
       return defaultConfig();
@@ -55,6 +58,7 @@ export class ConfigStore {
       model: update.model?.trim() || current.model,
       systemPrompt: update.systemPrompt?.trim() || current.systemPrompt,
       apiKey: update.apiKey !== undefined ? update.apiKey.trim() : current.apiKey || getEnvApiKeyForProvider(providerId),
+      toolPolicy: normalizeToolPolicy(update.toolPolicy ?? current.toolPolicy),
     };
 
     await fs.mkdir(path.dirname(this.filePath), { recursive: true });

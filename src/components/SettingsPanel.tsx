@@ -3,7 +3,7 @@ import { AutomationPanel } from '@/components/AutomationPanel';
 import { useAppStore } from '@/store/app-store';
 import { chatRuntime } from '@/services/chat-runtime';
 import { listAvailableModels } from '@/services/electron-api';
-import type { ModelCatalogResult } from '../../shared/contracts';
+import type { ModelCatalogResult, ToolAccessMode } from '../../shared/contracts';
 import { inferConfiguredModelCapabilities } from '../../shared/model-capabilities';
 import {
   getProviderPreset,
@@ -11,6 +11,7 @@ import {
   LLM_PROVIDER_PRESETS,
   resolveBaseUrl,
 } from '../../shared/provider-presets';
+import { TOOL_ACCESS_MODES, TOOL_POLICY_DESCRIPTIONS, TOOL_POLICY_LABELS } from '../../shared/tool-policy';
 
 const capabilityToneByLevel = {
   supported: 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100',
@@ -49,6 +50,18 @@ const modelChipTone = (
   }
 
   return 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10';
+};
+
+const policyTone = (mode: ToolAccessMode): string => {
+  if (mode === 'allow') {
+    return 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100';
+  }
+
+  if (mode === 'ask') {
+    return 'border-amber-300/30 bg-amber-300/10 text-amber-100';
+  }
+
+  return 'border-rose-300/30 bg-rose-300/10 text-rose-100';
 };
 
 export const SettingsPanel = () => {
@@ -258,6 +271,63 @@ export const SettingsPanel = () => {
             ))}
           </div>
         ) : null}
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-sm text-slate-300">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="font-medium text-slate-100">Tool Access Policy</p>
+            <p className="mt-1 text-xs text-slate-500">
+              `ask` means the agent should stop and get your approval before retrying. `block` hard-denies the tool in
+              the backend.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.18em]">
+            <span className={`rounded-full border px-3 py-1 ${policyTone('allow')}`}>allow</span>
+            <span className={`rounded-full border px-3 py-1 ${policyTone('ask')}`}>ask first</span>
+            <span className={`rounded-full border px-3 py-1 ${policyTone('block')}`}>block</span>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 xl:grid-cols-2">
+          {(Object.entries(TOOL_POLICY_DESCRIPTIONS) as Array<[keyof typeof config.toolPolicy, (typeof TOOL_POLICY_DESCRIPTIONS)[keyof typeof TOOL_POLICY_DESCRIPTIONS]]>).map(
+            ([key, details]) => (
+              <label
+                key={key}
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-100">{details.label}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{details.description}</p>
+                  </div>
+                  <span className={`rounded-full border px-2.5 py-1 text-[11px] uppercase tracking-[0.18em] ${policyTone(config.toolPolicy[key])}`}>
+                    {TOOL_POLICY_LABELS[config.toolPolicy[key]]}
+                  </span>
+                </div>
+                <select
+                  value={config.toolPolicy[key]}
+                  onChange={(event) =>
+                    updateConfig((current) => ({
+                      ...current,
+                      toolPolicy: {
+                        ...current.toolPolicy,
+                        [key]: event.target.value as ToolAccessMode,
+                      },
+                    }))
+                  }
+                  className="mt-3 w-full rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-sky-400/40"
+                >
+                  {TOOL_ACCESS_MODES.map((mode) => (
+                    <option key={mode} value={mode}>
+                      {TOOL_POLICY_LABELS[mode]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ),
+          )}
+        </div>
       </div>
 
       <div className="mt-4 rounded-2xl border border-sky-400/15 bg-sky-400/5 px-4 py-4 text-sm text-slate-300">

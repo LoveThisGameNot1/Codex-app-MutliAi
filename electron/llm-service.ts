@@ -34,6 +34,7 @@ import {
   isApiKeyOptionalForProvider,
   resolveBaseUrl,
 } from '../shared/provider-presets';
+import { describeToolPolicyForPrompt, normalizeToolPolicy } from '../shared/tool-policy';
 import {
   executeTerminalTool,
   readFileTool,
@@ -80,15 +81,19 @@ const parseJson = <T>(input: string): T => {
   }
 };
 
-const buildPrompt = (systemPrompt: string): string => {
-  const trimmed = systemPrompt.trim();
+const buildPrompt = (config: AppConfig): string => {
+  const trimmed = config.systemPrompt.trim();
   const basePrompt = trimmed || DEFAULT_SYSTEM_PROMPT;
+  const toolPolicy = normalizeToolPolicy(config.toolPolicy);
   return `${basePrompt}
 
 Runtime capabilities:
 - The workspace supports recurring automations.
 - Available automation tools are list_automations, create_automation, update_automation, delete_automation, and run_automation.
-- Use automation tools when the user asks for repeated work, scheduled checks, or autonomous follow-up runs.`;
+- Use automation tools when the user asks for repeated work, scheduled checks, or autonomous follow-up runs.
+
+Current tool approval policy:
+${describeToolPolicyForPrompt(toolPolicy).join('\n')}`;
 };
 
 const normalizeBaseUrl = (input: string): string => input.trim().replace(/\/+$/, '');
@@ -423,7 +428,7 @@ export class LlmService {
 
   public async resetSession(sessionId: string, config: AppConfig): Promise<void> {
     await this.initializationPromise;
-    const prompt = buildPrompt(config.systemPrompt);
+    const prompt = buildPrompt(config);
     const session: Session = {
       prompt,
       messages: [
@@ -461,7 +466,7 @@ export class LlmService {
     }
 
     const client = buildOpenAIClient(config);
-    const prompt = buildPrompt(config.systemPrompt);
+    const prompt = buildPrompt(config);
     const session = this.ensureSession(sessionId, prompt);
 
     session.messages.push({
@@ -481,7 +486,11 @@ export class LlmService {
     let contentSnapshot = '';
     const abortController = new AbortController();
     this.activeAbortControllers.set(requestId, abortController);
-    const context: ToolContext = { workspaceRoot: this.workspaceRoot, signal: abortController.signal };
+    const context: ToolContext = {
+      workspaceRoot: this.workspaceRoot,
+      signal: abortController.signal,
+      toolPolicy: normalizeToolPolicy(config.toolPolicy),
+    };
     const toolDefinitions = this.createToolDefinitions(requestId, context, emitEvent);
 
     const tools: Array<Parameters<OpenAI['chat']['completions']['runTools']>[0]['tools'][number]> = toolDefinitions.map((tool) => ({
@@ -585,7 +594,7 @@ export class LlmService {
       return;
     }
 
-    const prompt = buildPrompt(config.systemPrompt);
+    const prompt = buildPrompt(config);
     const session = this.ensureSession(sessionId, prompt);
     session.messages.push({
       role: 'user',
@@ -603,7 +612,11 @@ export class LlmService {
 
     const abortController = new AbortController();
     this.activeAbortControllers.set(requestId, abortController);
-    const context: ToolContext = { workspaceRoot: this.workspaceRoot, signal: abortController.signal };
+    const context: ToolContext = {
+      workspaceRoot: this.workspaceRoot,
+      signal: abortController.signal,
+      toolPolicy: normalizeToolPolicy(config.toolPolicy),
+    };
     const toolDefinitions = this.createToolDefinitions(requestId, context, emitEvent);
     const anthropicTools: Anthropic.Tool[] = toolDefinitions.map((tool) => ({
       name: tool.name,
@@ -778,7 +791,7 @@ export class LlmService {
       return;
     }
 
-    const prompt = buildPrompt(config.systemPrompt);
+    const prompt = buildPrompt(config);
     const session = this.ensureSession(sessionId, prompt);
     session.messages.push({
       role: 'user',
@@ -796,7 +809,11 @@ export class LlmService {
 
     const abortController = new AbortController();
     this.activeAbortControllers.set(requestId, abortController);
-    const context: ToolContext = { workspaceRoot: this.workspaceRoot, signal: abortController.signal };
+    const context: ToolContext = {
+      workspaceRoot: this.workspaceRoot,
+      signal: abortController.signal,
+      toolPolicy: normalizeToolPolicy(config.toolPolicy),
+    };
     const toolDefinitions = this.createToolDefinitions(requestId, context, emitEvent);
     const toolMap = new Map(toolDefinitions.map((tool) => [tool.name, tool]));
     const functionDeclarations: FunctionDeclaration[] = toolDefinitions.map((tool) => ({

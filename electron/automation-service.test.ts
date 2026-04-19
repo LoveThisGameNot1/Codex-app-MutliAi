@@ -6,6 +6,7 @@ import { AutomationService } from './automation-service';
 import { AutomationStore } from './automation-store';
 import { SessionStore } from './session-store';
 import { DEFAULT_BASE_URL, DEFAULT_PROVIDER_ID } from '../shared/provider-presets';
+import { DEFAULT_TOOL_POLICY } from '../shared/tool-policy';
 
 const tempDirs: string[] = [];
 
@@ -51,6 +52,7 @@ describe('AutomationService', () => {
         apiKey: 'test-key',
         model: 'gpt-5.4',
         systemPrompt: 'system',
+        toolPolicy: DEFAULT_TOOL_POLICY,
       }),
       () => {
         events.push('changed');
@@ -101,6 +103,7 @@ describe('AutomationService', () => {
         apiKey: 'test-key',
         model: 'gpt-5.4',
         systemPrompt: 'system',
+        toolPolicy: DEFAULT_TOOL_POLICY,
       }),
       () => undefined,
     );
@@ -142,6 +145,7 @@ describe('AutomationService', () => {
         apiKey: 'test-key',
         model: 'gpt-5.4',
         systemPrompt: 'system',
+        toolPolicy: DEFAULT_TOOL_POLICY,
       }),
       () => undefined,
     );
@@ -183,6 +187,7 @@ describe('AutomationService', () => {
         apiKey: 'test-key',
         model: 'gpt-5.4',
         systemPrompt: 'system',
+        toolPolicy: DEFAULT_TOOL_POLICY,
       }),
       () => undefined,
     );
@@ -237,6 +242,7 @@ describe('AutomationService', () => {
         apiKey: 'test-key',
         model: 'gpt-5.4',
         systemPrompt: 'system',
+        toolPolicy: DEFAULT_TOOL_POLICY,
       }),
       () => undefined,
     );

@@ -4,7 +4,8 @@ import { automationRuntime } from '@/services/automation-runtime';
 import { chatRuntime } from '@/services/chat-runtime';
 import { getConfig, getDesktopAppInfo } from '@/services/electron-api';
 import { useAppStore } from '@/store/app-store';
-import { DEFAULT_BASE_URL, DEFAULT_PROVIDER_ID, DEFAULT_SYSTEM_PROMPT } from '../shared/contracts';
+import { DEFAULT_BASE_URL, DEFAULT_MODEL, DEFAULT_PROVIDER_ID, DEFAULT_SYSTEM_PROMPT } from '../shared/contracts';
+import { DEFAULT_TOOL_POLICY } from '../shared/tool-policy';
 
 const App = () => {
   const setAppInfo = useAppStore((state) => state.setAppInfo);
@@ -23,8 +24,9 @@ const App = () => {
         providerId: DEFAULT_PROVIDER_ID,
         baseUrl: DEFAULT_BASE_URL,
         apiKey: '',
-        model: 'gpt-5.4',
+        model: DEFAULT_MODEL,
         systemPrompt: DEFAULT_SYSTEM_PROMPT,
+        toolPolicy: DEFAULT_TOOL_POLICY,
       });
     });
   }, [hydrateConfig, setAppInfo]);

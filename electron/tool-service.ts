@@ -1,6 +1,9 @@
 import { exec } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import type { ToolPolicyConfig } from '../shared/contracts';
+import { DEFAULT_TOOL_POLICY } from '../shared/tool-policy';
+import { getReadPolicyViolation, getTerminalPolicyViolation, getWritePolicyViolation } from './tool-policy';
 
 const MAX_FILE_BYTES = 1024 * 1024 * 2;
 const MAX_RETURN_BYTES = 120 * 1024;
@@ -8,6 +11,7 @@ const MAX_RETURN_BYTES = 120 * 1024;
 export type ToolContext = {
   workspaceRoot: string;
   signal?: AbortSignal;
+  toolPolicy?: ToolPolicyConfig;
 };
 
 export type ReadFileArgs = {
@@ -49,9 +53,15 @@ const resolveInputPath = (inputPath: string, workspaceRoot: string): string => {
   return path.isAbsolute(trimmed) ? path.normalize(trimmed) : path.resolve(workspaceRoot, trimmed);
 };
 
+const getToolPolicy = (context: ToolContext): ToolPolicyConfig => context.toolPolicy ?? DEFAULT_TOOL_POLICY;
+
 export const readFileTool = async (args: ReadFileArgs, context: ToolContext): Promise<string> => {
   throwIfAborted(context.signal);
   const targetPath = resolveInputPath(args.path, context.workspaceRoot);
+  const violation = getReadPolicyViolation(getToolPolicy(context), targetPath, context.workspaceRoot);
+  if (violation) {
+    throw new Error(violation.message);
+  }
   const stats = await fs.stat(targetPath);
 
   if (!stats.isFile()) {
@@ -78,6 +88,10 @@ export const readFileTool = async (args: ReadFileArgs, context: ToolContext): Pr
 export const writeFileTool = async (args: WriteFileArgs, context: ToolContext): Promise<string> => {
   throwIfAborted(context.signal);
   const targetPath = resolveInputPath(args.path, context.workspaceRoot);
+  const violation = getWritePolicyViolation(getToolPolicy(context), targetPath, context.workspaceRoot);
+  if (violation) {
+    throw new Error(violation.message);
+  }
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
   await fs.writeFile(targetPath, args.content, 'utf8');
   throwIfAborted(context.signal);
@@ -161,6 +175,11 @@ export const executeTerminalTool = async (
   const command = args.command.trim();
   if (!command) {
     throw new Error('Command must not be empty.');
+  }
+
+  const violation = getTerminalPolicyViolation(getToolPolicy(context), command);
+  if (violation) {
+    throw new Error(violation.message);
   }
 
   const cwd = args.cwd ? resolveInputPath(args.cwd, context.workspaceRoot) : context.workspaceRoot;

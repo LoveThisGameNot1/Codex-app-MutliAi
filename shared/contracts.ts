@@ -38,6 +38,7 @@ export type ArtifactViewMode = 'code' | 'preview';
 export type MessageRole = 'user' | 'assistant' | 'tool' | 'system';
 export type MessageStatus = 'idle' | 'streaming' | 'complete' | 'error';
 export type ToolExecutionStatus = 'running' | 'completed' | 'failed';
+export type ToolAccessMode = 'allow' | 'ask' | 'block';
 export type AutomationStatus = 'active' | 'paused';
 export type AutomationRunStatus = 'running' | 'completed' | 'failed';
 export type AutomationWeekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -58,9 +59,19 @@ export type AppConfig = {
   apiKey: string;
   model: string;
   systemPrompt: string;
+  toolPolicy: ToolPolicyConfig;
 };
 
 export type AppConfigUpdate = Partial<AppConfig>;
+
+export type ToolPolicyConfig = {
+  readFile: ToolAccessMode;
+  outsideWorkspaceReads: ToolAccessMode;
+  writeFile: ToolAccessMode;
+  outsideWorkspaceWrites: ToolAccessMode;
+  executeTerminal: ToolAccessMode;
+  riskyTerminal: ToolAccessMode;
+};
 
 export type ToolExecutionRecord = {
   id: string;
