@@ -1,16 +1,16 @@
 # CodexApp Multi APIs
 
-Eine Electron-Desktop-App im Stil von Cursor oder Claude Artifacts mit:
+An Electron desktop app in the style of Cursor or Claude Artifacts, featuring:
 
-- Streaming-Chat gegen mehrere LLM-Anbieter, inklusive nativer Anthropic- und Gemini-Adapter auf den offiziellen Endpunkten
-- Tool-Calling fuer Dateisystem und Terminal
-- Echtzeit-Parsing von `<artifact>`-Tags
-- Monaco Code View fuer Artefakte
-- Sandboxed HTML/React Preview im rechten Panel
-- Persistenter Chat- und Artifact-Verlauf zwischen App-Starts
-- Parser-Unit-Tests mit Vitest
+- Streaming chat across multiple LLM providers, including native Anthropic and Gemini adapters on the official endpoints
+- Tool calling for the filesystem and terminal
+- Real-time parsing of `<artifact>` tags
+- Monaco code view for artifacts
+- Sandboxed HTML/React preview in the right panel
+- Persistent chat and artifact history across app restarts
+- Parser unit tests with Vitest
 
-Aktuell gibt es Presets fuer:
+Current presets are available for:
 
 - OpenAI
 - Anthropic
@@ -25,25 +25,25 @@ Aktuell gibt es Presets fuer:
 - DeepSeek
 - xAI
 - Ollama
-- beliebige Custom OpenAI-kompatible Endpunkte
+- any custom OpenAI-compatible endpoints
 
-## Voraussetzungen
+## Requirements
 
 - Node.js 20+
-- Ein API-Key fuer deinen gewuenschten Anbieter oder ein lokaler kompatibler Endpoint wie Ollama
+- An API key for your preferred provider, or a local compatible endpoint such as Ollama
 
-## Entwicklung
+## Development
 
 ```powershell
 npm install
 npm run dev
 ```
 
-Optional koennen Provider-Keys auch ueber `.env.example` bzw. eine `.env` gesetzt werden.
-Fuer Anthropic und Gemini nutzt die App auf den offiziellen Preset-Endpunkten native SDK-Adapter fuer Streaming und Tool-Calling. Wenn du die Base URL auf einen Gateway oder Proxy aenderst, faellt die App automatisch auf den OpenAI-kompatiblen Transport zurueck, damit benutzerdefinierte Endpunkte weiter funktionieren.
-Fuer viele kompatible Anbieter kann die App ausserdem live die verfuegbaren Modelle vom aktuellen Endpoint laden und als waehlbare Modellbibliothek anzeigen.
+Provider keys can also be configured through `.env.example` or a local `.env` file.
+For Anthropic and Gemini, the app uses native SDK adapters for streaming and tool calling when you stay on the official preset endpoints. If you change the base URL to a gateway or proxy, the app automatically falls back to the OpenAI-compatible transport so custom endpoints keep working.
+For many compatible providers, the app can also load the currently available models live from the active endpoint and expose them as a selectable model library.
 
-## Produktionstest
+## Production Verification
 
 ```powershell
 npm run test
@@ -51,16 +51,16 @@ npm run build
 npm run dist
 ```
 
-## Git workflow
+## Git Workflow
 
-- Nutze `feature/*`, `fix/*`, `hotfix/*` oder `release/*` Branches fuer neue Arbeit.
-- Commit-Messages, Branch-Namen, Pull-Request-Titel und Patchnotes werden auf Englisch geschrieben.
-- Pushes und Pull Requests gegen `main` oder `develop` laufen automatisch durch GitHub Actions CI.
-- Releases werden ueber Git-Tags im Format `vX.Y.Z` erstellt und bauen automatisch den Windows-Installer.
-- Details stehen in `docs/WORKFLOW.md`.
+- Use `feature/*`, `fix/*`, `hotfix/*`, or `release/*` branches for new work.
+- Commit messages, branch names, pull request titles, and patch notes are written in English.
+- Pushes and pull requests targeting `main` or `develop` are validated automatically by GitHub Actions CI.
+- Releases are created from Git tags in the format `vX.Y.Z` and automatically build the Windows installer.
+- See `docs/WORKFLOW.md` for more details.
 
-## Architektur
+## Architecture
 
-- `electron/`: Main Process, IPC, Config-Store, Multi-Provider-LLM- und Tool-Bruecke
-- `shared/`: Prozessuebergreifende Vertrage, Provider-Presets und Defaults
-- `src/`: React Renderer, Zustand-Store, Stream-Parser, Monaco- und Preview-UI
+- `electron/`: main process, IPC, config store, multi-provider LLM bridge, and tool bridge
+- `shared/`: cross-process contracts, provider presets, and defaults
+- `src/`: React renderer, Zustand store, stream parser, Monaco UI, and preview UI
