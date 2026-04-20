@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { AppConfig } from '../shared/contracts';
 import { AutomationService } from './automation-service';
 import { AutomationStore } from './automation-store';
 import { SessionStore } from './session-store';
@@ -82,6 +83,73 @@ describe('AutomationService', () => {
     });
     expect(runs[0]?.automationId).toBe(automation.id);
     expect(events.length).toBeGreaterThan(0);
+  });
+
+  it('clamps automation tool policy before starting unattended runs', async () => {
+    const baseDir = await createTempDir();
+    const automationStore = new AutomationStore(baseDir);
+    const sessionStore = new SessionStore(baseDir);
+    let receivedToolPolicy: AppConfig['toolPolicy'] | null = null;
+
+    const llmServiceStub = {
+      startChat: async ({ sessionId, config }: { sessionId: string; config: AppConfig }) => {
+        receivedToolPolicy = config.toolPolicy;
+        await sessionStore.upsert({
+          id: sessionId,
+          prompt: 'automation prompt',
+          updatedAt: new Date().toISOString(),
+          messages: [
+            { role: 'developer', content: 'automation prompt' },
+            { role: 'assistant', content: 'Automation done.' },
+          ],
+        });
+      },
+    } as never;
+
+    const service = new AutomationService(
+      automationStore,
+      sessionStore,
+      llmServiceStub,
+      async () => ({
+        providerId: DEFAULT_PROVIDER_ID,
+        baseUrl: DEFAULT_BASE_URL,
+        apiKey: 'test-key',
+        model: 'gpt-5.4',
+        systemPrompt: 'system',
+        toolPolicy: {
+          ...DEFAULT_TOOL_POLICY,
+          readFile: 'allow',
+          writeFile: 'allow',
+          executeTerminal: 'allow',
+          outsideWorkspaceReads: 'allow',
+          outsideWorkspaceWrites: 'allow',
+          outsideWorkspaceTerminal: 'allow',
+          riskyTerminal: 'allow',
+        },
+      }),
+      () => undefined,
+    );
+
+    const automation = await service.createAutomation({
+      name: 'Safety clamp',
+      prompt: 'Inspect and write safe workspace files only.',
+      schedule: {
+        kind: 'interval',
+        intervalMinutes: 30,
+      },
+    });
+
+    await service.runAutomationNow(automation.id);
+
+    expect(receivedToolPolicy).toEqual({
+      readFile: 'allow',
+      outsideWorkspaceReads: 'block',
+      writeFile: 'allow',
+      outsideWorkspaceWrites: 'block',
+      executeTerminal: 'allow',
+      outsideWorkspaceTerminal: 'block',
+      riskyTerminal: 'block',
+    });
   });
 
   it('pauses automations by clearing the next run time', async () => {

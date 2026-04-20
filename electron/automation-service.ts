@@ -9,6 +9,7 @@ import type {
   CreateAutomationInput,
   UpdateAutomationInput,
 } from '../shared/contracts';
+import { deriveAutomationToolPolicy } from '../shared/tool-policy';
 import { AutomationStore } from './automation-store';
 import { LlmService } from './llm-service';
 import { SessionStore } from './session-store';
@@ -321,6 +322,10 @@ export class AutomationService {
 
     try {
       const config = await this.getConfig();
+      const automationConfig: AppConfig = {
+        ...config,
+        toolPolicy: deriveAutomationToolPolicy(config.toolPolicy),
+      };
       const requestId = `automation:${automation.id}:${runId}`;
       const sessionId = `automation:${automation.id}`;
 
@@ -329,7 +334,7 @@ export class AutomationService {
           requestId,
           sessionId,
           message: automation.prompt,
-          config,
+          config: automationConfig,
         },
         () => undefined,
       );

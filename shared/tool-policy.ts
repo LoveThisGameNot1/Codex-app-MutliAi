@@ -73,3 +73,17 @@ export const describeToolPolicyForPrompt = (policy: ToolPolicyConfig): string[] 
   '- If a tool is marked ask, explain the action and wait for the user to approve it before trying again.',
   '- If a tool is marked block, do not attempt it and offer a safer alternative.',
 ];
+
+export const deriveAutomationToolPolicy = (policyInput?: Partial<ToolPolicyConfig> | null): ToolPolicyConfig => {
+  const policy = normalizeToolPolicy(policyInput);
+
+  return {
+    readFile: policy.readFile === 'allow' ? 'allow' : 'block',
+    outsideWorkspaceReads: 'block',
+    writeFile: policy.writeFile === 'allow' ? 'allow' : 'block',
+    outsideWorkspaceWrites: 'block',
+    executeTerminal: policy.executeTerminal === 'allow' ? 'allow' : 'block',
+    outsideWorkspaceTerminal: 'block',
+    riskyTerminal: 'block',
+  };
+};
