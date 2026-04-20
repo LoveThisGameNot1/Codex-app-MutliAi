@@ -54,8 +54,11 @@ describe('tool-service', () => {
       { workspaceRoot },
     );
 
-    const parsed = JSON.parse(raw) as { path: string; content: string };
-    expect(parsed.path).toBe(path.join(workspaceRoot, 'notes', 'hello.txt'));
+    const canonicalWorkspaceRoot = await fs.realpath(workspaceRoot);
+    const expectedPath = path.join(canonicalWorkspaceRoot, 'notes', 'hello.txt');
+    const parsed = JSON.parse(raw) as { path: string; requestedPath: string; content: string };
+    expect(parsed.requestedPath).toBe(expectedPath);
+    expect(parsed.path).toBe(await fs.realpath(expectedPath));
     expect(parsed.content).toBe('hello world');
   });
 
@@ -109,6 +112,72 @@ describe('tool-service', () => {
         {
           command: process.platform === 'win32' ? 'Write-Output hello' : 'echo hello',
           cwd: outsideDir,
+        },
+        {
+          workspaceRoot,
+          toolPolicy: DEFAULT_TOOL_POLICY,
+        },
+      ),
+    ).rejects.toThrow('Approval required by tool policy');
+  });
+
+  it('blocks reading files through a workspace junction that resolves outside the project', async () => {
+    const workspaceRoot = await createWorkspace();
+    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexapp-tools-outside-'));
+    tempDirs.push(outsideDir);
+    const linkedDir = path.join(workspaceRoot, 'linked-outside');
+
+    await fs.writeFile(path.join(outsideDir, 'secret.txt'), 'outside secret', 'utf8');
+    await fs.symlink(outsideDir, linkedDir, 'junction');
+
+    await expect(
+      readFileTool(
+        {
+          path: 'linked-outside/secret.txt',
+        },
+        {
+          workspaceRoot,
+          toolPolicy: DEFAULT_TOOL_POLICY,
+        },
+      ),
+    ).rejects.toThrow('Approval required by tool policy');
+  });
+
+  it('blocks writing files through a workspace junction that resolves outside the project', async () => {
+    const workspaceRoot = await createWorkspace();
+    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexapp-tools-outside-'));
+    tempDirs.push(outsideDir);
+    const linkedDir = path.join(workspaceRoot, 'linked-outside');
+
+    await fs.symlink(outsideDir, linkedDir, 'junction');
+
+    await expect(
+      writeFileTool(
+        {
+          path: 'linked-outside/created.txt',
+          content: 'should be blocked',
+        },
+        {
+          workspaceRoot,
+          toolPolicy: DEFAULT_TOOL_POLICY,
+        },
+      ),
+    ).rejects.toThrow('Approval required by tool policy');
+  });
+
+  it('blocks terminal execution from a workspace junction that resolves outside the project', async () => {
+    const workspaceRoot = await createWorkspace();
+    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexapp-tools-outside-'));
+    tempDirs.push(outsideDir);
+    const linkedDir = path.join(workspaceRoot, 'linked-outside');
+
+    await fs.symlink(outsideDir, linkedDir, 'junction');
+
+    await expect(
+      executeTerminalTool(
+        {
+          command: process.platform === 'win32' ? 'Write-Output hello' : 'echo hello',
+          cwd: 'linked-outside',
         },
         {
           workspaceRoot,
