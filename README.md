@@ -43,6 +43,27 @@ Provider keys can also be configured through `.env.example` or a local `.env` fi
 For Anthropic and Gemini, the app uses native SDK adapters for streaming and tool calling when you stay on the official preset endpoints. If you change the base URL to a gateway or proxy, the app automatically falls back to the OpenAI-compatible transport so custom endpoints keep working.
 For many compatible providers, the app can also load the currently available models live from the active endpoint and expose them as a selectable model library.
 
+## How to Use
+
+1. Start the app with `npm run dev`.
+2. Open the settings panel and choose a provider, model, base URL, and API key if needed.
+3. Enter a prompt in the chat composer on the left.
+4. Let the agent respond in markdown, use tools, and emit `<artifact>` blocks when it wants to create code or previews.
+5. Inspect the generated artifact in the right panel using code view or preview mode.
+6. Review any filesystem or terminal activity in the chat timeline and tool status surfaces.
+7. If a tool action requires approval, use the Approval Center to approve once, approve for the current run, or reject it.
+8. Create automations in the settings area when you want recurring runs, scheduled checks, or follow-up work.
+9. Use the session library to reload previous conversations and continue from persisted context.
+
+### Example Flow
+
+- Select `OpenAI`, `Anthropic`, `Gemini`, or another supported provider.
+- Ask: `Build a pricing page artifact in React and write the files into src/pages.`
+- Review the streamed answer in chat.
+- Open the generated artifact in the right panel.
+- Approve any gated tool actions if needed.
+- Run tests or follow-up prompts until the output is where you want it.
+
 ## Production Verification
 
 ```powershell
