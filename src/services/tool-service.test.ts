@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { executeTerminalTool, readFileTool, writeFileTool } from '../../electron/tool-service';
 import { DEFAULT_TOOL_POLICY } from '../../shared/tool-policy';
 
@@ -185,5 +185,34 @@ describe('tool-service', () => {
         },
       ),
     ).rejects.toThrow('Approval required by tool policy');
+  });
+
+  it('keeps the original file intact and cleans up temp files when atomic rename fails', async () => {
+    const workspaceRoot = await createWorkspace();
+    const targetPath = path.join(workspaceRoot, 'notes', 'atomic.txt');
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.writeFile(targetPath, 'original', 'utf8');
+
+    const renameSpy = vi.spyOn(fs, 'rename').mockImplementation(async () => {
+      throw Object.assign(new Error('rename failed'), { code: 'EPERM' });
+    });
+
+    try {
+      await expect(
+        writeFileTool(
+          {
+            path: 'notes/atomic.txt',
+            content: 'updated',
+          },
+          { workspaceRoot },
+        ),
+      ).rejects.toThrow('rename failed');
+    } finally {
+      renameSpy.mockRestore();
+    }
+
+    expect(await fs.readFile(targetPath, 'utf8')).toBe('original');
+    const directoryEntries = await fs.readdir(path.dirname(targetPath));
+    expect(directoryEntries.some((entry) => entry.startsWith('.codexapp-write-'))).toBe(false);
   });
 });

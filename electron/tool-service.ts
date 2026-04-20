@@ -7,6 +7,7 @@ import { getReadPolicyViolation, getTerminalPolicyViolation, getWritePolicyViola
 
 const MAX_FILE_BYTES = 1024 * 1024 * 2;
 const MAX_RETURN_BYTES = 120 * 1024;
+const TEMP_WRITE_PREFIX = '.codexapp-write-';
 
 export type ToolContext = {
   workspaceRoot: string;
@@ -102,6 +103,24 @@ const resolveWorkspaceRootForPolicy = async (workspaceRoot: string): Promise<str
   }
 };
 
+const createTemporaryWritePath = (targetPath: string): string =>
+  path.join(
+    path.dirname(targetPath),
+    `${TEMP_WRITE_PREFIX}${path.basename(targetPath)}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}.tmp`,
+  );
+
+const writeFileAtomically = async (targetPath: string, content: string, signal?: AbortSignal): Promise<void> => {
+  const temporaryPath = createTemporaryWritePath(targetPath);
+
+  try {
+    await fs.writeFile(temporaryPath, content, 'utf8');
+    throwIfAborted(signal);
+    await fs.rename(temporaryPath, targetPath);
+  } finally {
+    await fs.rm(temporaryPath, { force: true }).catch(() => undefined);
+  }
+};
+
 export const readFileTool = async (args: ReadFileArgs, context: ToolContext): Promise<string> => {
   throwIfAborted(context.signal);
   const workspaceRoot = await resolveWorkspaceRootForPolicy(context.workspaceRoot);
@@ -145,8 +164,7 @@ export const writeFileTool = async (args: WriteFileArgs, context: ToolContext): 
     throw new Error(violation.message);
   }
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
-  await fs.writeFile(targetPath, args.content, 'utf8');
-  throwIfAborted(context.signal);
+  await writeFileAtomically(targetPath, args.content, context.signal);
   const resolvedTargetPath = await resolvePathForPolicy(targetPath);
 
   return JSON.stringify(
