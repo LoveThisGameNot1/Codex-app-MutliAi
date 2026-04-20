@@ -89,6 +89,7 @@ export type ToolExecutionRecord = {
 export type ToolApprovalRequestRecord = {
   id: string;
   requestId: string;
+  source: 'chat' | 'automation';
   toolName: string;
   policyKey: keyof ToolPolicyConfig;
   argumentsText: string;

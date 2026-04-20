@@ -6,6 +6,7 @@ import type {
   AutomationRunRecord,
   AutomationSchedule,
   AutomationWeekday,
+  ChatStreamEvent,
   CreateAutomationInput,
   UpdateAutomationInput,
 } from '../shared/contracts';
@@ -169,7 +170,10 @@ const validateSchedule = (schedule: AutomationSchedule): AutomationSchedule => {
   };
 };
 
+const isApprovalWaitingSummary = (summary: string): boolean => summary.trim().toLowerCase().startsWith('waiting for approval');
+
 type EmitAutomationEvent = (event: AutomationEvent) => void;
+type EmitChatEvent = (event: ChatStreamEvent) => void;
 
 export class AutomationService {
   private readonly timers = new Map<string, NodeJS.Timeout>();
@@ -182,6 +186,7 @@ export class AutomationService {
     private readonly llmService: LlmService,
     private readonly getConfig: () => Promise<AppConfig>,
     private readonly emitEvent: EmitAutomationEvent,
+    private readonly emitChatEvent: EmitChatEvent,
   ) {}
 
   public async initialize(): Promise<void> {
@@ -190,6 +195,7 @@ export class AutomationService {
     }
 
     this.initialized = true;
+    await this.automationStore.markInterruptedRunsAsFailed();
     const automations = await this.automationStore.loadAutomations();
     for (const automation of automations) {
       this.scheduleAutomation(automation);
@@ -328,6 +334,22 @@ export class AutomationService {
       };
       const requestId = `automation:${automation.id}:${runId}`;
       const sessionId = `automation:${automation.id}`;
+      const updateRunningState = async (summary: string): Promise<void> => {
+        const timestamp = nowIso();
+        await this.automationStore.upsertRun({
+          ...runningRun,
+          summary,
+        });
+        await this.automationStore.upsertAutomation({
+          ...automation,
+          updatedAt: timestamp,
+          lastRunAt: timestamp,
+          nextRunAt: null,
+          lastRunStatus: 'running',
+          lastResultSummary: truncate(summary, 220),
+        });
+        this.emitEvent({ type: 'automation.changed' });
+      };
 
       await this.llmService.startChat(
         {
@@ -336,7 +358,21 @@ export class AutomationService {
           message: automation.prompt,
           config: automationConfig,
         },
-        () => undefined,
+        (event: ChatStreamEvent) => {
+          this.emitChatEvent(event);
+
+          if (event.type === 'approval.requested') {
+            void updateRunningState(truncate(`Waiting for approval: ${event.approval.toolName} - ${event.approval.reason}`, 220));
+          }
+
+          if (event.type === 'approval.resolved') {
+            void updateRunningState(
+              event.decision === 'approve'
+                ? 'Approval granted. Automation resumed.'
+                : 'Approval rejected. Automation will stop.',
+            );
+          }
+        },
       );
 
       const session = await this.sessionStore.load(sessionId);
@@ -359,7 +395,10 @@ export class AutomationService {
         ...automation,
         updatedAt: finishedAt,
         lastRunAt: finishedAt,
-        nextRunAt: automation.status === 'active' ? computeNextRunAt(automation.schedule, finishedAt) : null,
+        nextRunAt:
+          automation.status === 'active' && !isApprovalWaitingSummary(summary)
+            ? computeNextRunAt(automation.schedule, finishedAt)
+            : null,
         lastRunStatus: 'completed',
         lastResultSummary: summary,
       };

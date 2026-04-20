@@ -87,11 +87,11 @@ export const deriveAutomationToolPolicy = (policyInput?: Partial<ToolPolicyConfi
   const policy = normalizeToolPolicy(policyInput);
 
   return {
-    readFile: policy.readFile === 'allow' ? 'allow' : 'block',
+    readFile: policy.readFile,
     outsideWorkspaceReads: 'block',
-    writeFile: policy.writeFile === 'allow' ? 'allow' : 'block',
+    writeFile: policy.writeFile,
     outsideWorkspaceWrites: 'block',
-    executeTerminal: policy.executeTerminal === 'allow' ? 'allow' : 'block',
+    executeTerminal: policy.executeTerminal,
     outsideWorkspaceTerminal: 'block',
     riskyTerminal: 'block',
   };
@@ -101,6 +101,7 @@ export type AutomationToolPolicySummary = {
   headline: string;
   detail: string;
   allowedCapabilities: string[];
+  approvalRequiredCapabilities: string[];
   blockedCapabilities: string[];
 };
 
@@ -125,22 +126,29 @@ export const summarizeAutomationToolPolicy = (
 ): AutomationToolPolicySummary => {
   const policy = deriveAutomationToolPolicy(policyInput);
   const allowedCapabilities: string[] = [];
+  const approvalRequiredCapabilities: string[] = [];
   const blockedCapabilities: string[] = [];
 
   if (policy.readFile === 'allow') {
     allowedCapabilities.push('workspace reads');
+  } else if (policy.readFile === 'ask') {
+    approvalRequiredCapabilities.push('workspace reads');
   } else {
     blockedCapabilities.push('workspace reads');
   }
 
   if (policy.writeFile === 'allow') {
     allowedCapabilities.push('workspace writes');
+  } else if (policy.writeFile === 'ask') {
+    approvalRequiredCapabilities.push('workspace writes');
   } else {
     blockedCapabilities.push('workspace writes');
   }
 
   if (policy.executeTerminal === 'allow') {
     allowedCapabilities.push('workspace terminal runs');
+  } else if (policy.executeTerminal === 'ask') {
+    approvalRequiredCapabilities.push('workspace terminal runs');
   } else {
     blockedCapabilities.push('workspace terminal runs');
   }
@@ -148,17 +156,22 @@ export const summarizeAutomationToolPolicy = (
   const headline =
     allowedCapabilities.length > 0
       ? `Scheduled runs can use ${joinLabels(allowedCapabilities)} without stopping for approval.`
-      : 'Scheduled runs are currently limited to chat-only work until unattended tool access is allowed.';
+      : approvalRequiredCapabilities.length > 0
+        ? `Scheduled runs can continue, but ${joinLabels(approvalRequiredCapabilities)} will pause until you approve them.`
+        : 'Scheduled runs are currently limited to chat-only work until unattended tool access is allowed.';
 
   const limitedDetail =
     blockedCapabilities.length > 0
       ? `Currently blocked for unattended runs: ${joinLabels(blockedCapabilities)}.`
-      : 'All in-workspace tool categories currently stay available to scheduled runs.';
+      : approvalRequiredCapabilities.length > 0
+        ? `Approval required when scheduled runs try ${joinLabels(approvalRequiredCapabilities)}.`
+        : 'All in-workspace tool categories currently stay available to scheduled runs.';
 
   return {
     headline,
     detail: `${limitedDetail} Outside-workspace file access, terminal runs outside the project, and risky terminal commands are always blocked.`,
     allowedCapabilities,
+    approvalRequiredCapabilities,
     blockedCapabilities,
   };
 };

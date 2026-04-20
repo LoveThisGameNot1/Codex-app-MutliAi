@@ -82,7 +82,7 @@ describe('AutomationStore', () => {
     });
   });
 
-  it('sanitizes interrupted running runs on load', async () => {
+  it('marks interrupted running runs as failed during recovery', async () => {
     const baseDir = await createTempDir();
     const store = new AutomationStore(baseDir);
 
@@ -95,6 +95,7 @@ describe('AutomationStore', () => {
       summary: 'Running...',
     });
 
+    await store.markInterruptedRunsAsFailed();
     const runs = await store.loadRuns();
     expect(runs[0]?.status).toBe('failed');
     expect(runs[0]?.finishedAt).toBeTruthy();

@@ -288,42 +288,51 @@ export const useAppStore = create<AppState>()(
       addPendingToolApproval: (approval) =>
         set((state) => ({
           pendingToolApprovals: [approval, ...state.pendingToolApprovals.filter((item) => item.id !== approval.id)],
-          messages: [
-            ...state.messages,
-            {
-              id: `${approval.id}:approval`,
-              role: 'system',
-              content: `Approval needed for ${approval.toolName}\n\n${approval.reason}`,
-              createdAt: approval.requestedAt,
-              status: 'complete',
-              toolApprovalId: approval.id,
-            },
-          ],
+          messages:
+            approval.source === 'chat'
+              ? [
+                  ...state.messages,
+                  {
+                    id: `${approval.id}:approval`,
+                    role: 'system',
+                    content: `Approval needed for ${approval.toolName}\n\n${approval.reason}`,
+                    createdAt: approval.requestedAt,
+                    status: 'complete',
+                    toolApprovalId: approval.id,
+                  },
+                ]
+              : state.messages,
         })),
       resolvePendingToolApproval: ({ approvalId, decision, scope }) =>
-        set((state) => ({
-          pendingToolApprovals: state.pendingToolApprovals.filter((approval) => approval.id !== approvalId),
-          messages: [
-            ...state.messages,
-            {
-              id: `${approvalId}:resolved:${decision}:${Date.now()}`,
-              role: 'system',
-                content:
-                  decision === 'approve'
-                  ? `Approval granted${
-                      scope === 'request'
-                        ? ' for the rest of this run'
-                        : scope === 'always'
-                          ? ' and this rule is now permanently allowed'
-                          : ' once'
-                    }.\n\nThe agent can continue.`
-                  : 'Approval rejected.\n\nThe pending tool action was denied.',
-              createdAt: nowIso(),
-              status: decision === 'approve' ? 'complete' : 'error',
-              toolApprovalId: approvalId,
-            },
-          ],
-        })),
+        set((state) => {
+          const resolvedApproval = state.pendingToolApprovals.find((approval) => approval.id === approvalId);
+          return {
+            pendingToolApprovals: state.pendingToolApprovals.filter((approval) => approval.id !== approvalId),
+            messages:
+              resolvedApproval?.source === 'chat'
+                ? [
+                    ...state.messages,
+                    {
+                      id: `${approvalId}:resolved:${decision}:${Date.now()}`,
+                      role: 'system',
+                      content:
+                        decision === 'approve'
+                          ? `Approval granted${
+                              scope === 'request'
+                                ? ' for the rest of this run'
+                                : scope === 'always'
+                                  ? ' and this rule is now permanently allowed'
+                                  : ' once'
+                            }.\n\nThe agent can continue.`
+                          : 'Approval rejected.\n\nThe pending tool action was denied.',
+                      createdAt: nowIso(),
+                      status: decision === 'approve' ? 'complete' : 'error',
+                      toolApprovalId: approvalId,
+                    },
+                  ]
+                : state.messages,
+          };
+        }),
       upsertArtifact: (artifact) =>
         set((state) => {
           const existing = state.artifacts.find((item) => item.id === artifact.id);

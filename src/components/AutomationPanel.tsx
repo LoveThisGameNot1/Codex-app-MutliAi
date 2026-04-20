@@ -307,6 +307,14 @@ export const AutomationPanel = () => {
                     {capability}
                   </span>
                 ))}
+                {automationPolicySummary.approvalRequiredCapabilities.map((capability) => (
+                  <span
+                    key={capability}
+                    className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-[11px] text-amber-100"
+                  >
+                    {capability} needs approval
+                  </span>
+                ))}
                 {automationPolicySummary.blockedCapabilities.map((capability) => (
                   <span
                     key={capability}
@@ -471,6 +479,11 @@ export const AutomationPanel = () => {
                       {running ? (
                         <span className="rounded-full border border-sky-400/30 bg-sky-400/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.2em] text-sky-100">
                           Running now
+                        </span>
+                      ) : null}
+                      {latestRun?.status === 'running' && latestRun.summary.toLowerCase().includes('approval') ? (
+                        <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.2em] text-amber-100">
+                          Waiting for approval
                         </span>
                       ) : null}
                     </div>

@@ -25,6 +25,9 @@ const configStore = new ConfigStore();
 const sessionStore = new SessionStore(app.getPath('userData'));
 const automationStore = new AutomationStore(app.getPath('userData'));
 const llmService = new LlmService(workspaceRoot, sessionStore);
+const emitChatEvent = (event: ChatStreamEvent): void => {
+  mainWindow?.webContents.send('chat:event', event);
+};
 const emitAutomationEvent = () => {
   mainWindow?.webContents.send('automation:event', { type: 'automation.changed' });
 };
@@ -34,6 +37,7 @@ const automationService = new AutomationService(
   llmService,
   () => configStore.get(),
   emitAutomationEvent,
+  emitChatEvent,
 );
 llmService.setAutomationTooling({
   listAutomations: () => automationService.listAutomations(),
@@ -43,10 +47,6 @@ llmService.setAutomationTooling({
   runAutomation: (automationId) => automationService.runAutomationNow(automationId),
 });
 let mainWindow: BrowserWindow | null = null;
-
-const emitChatEvent = (event: ChatStreamEvent): void => {
-  mainWindow?.webContents.send('chat:event', event);
-};
 
 const createWindow = async (): Promise<void> => {
   mainWindow = new BrowserWindow({

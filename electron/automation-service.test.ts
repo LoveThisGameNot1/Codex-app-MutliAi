@@ -17,6 +17,29 @@ const createTempDir = async (): Promise<string> => {
   return dir;
 };
 
+const createDeferred = (): { promise: Promise<void>; resolve: () => void } => {
+  let resolve = (): void => undefined;
+  const promise = new Promise<void>((nextResolve) => {
+    resolve = () => {
+      nextResolve();
+    };
+  });
+
+  return { promise, resolve };
+};
+
+const waitFor = async (predicate: () => Promise<boolean>, attempts = 20, delayMs = 10): Promise<void> => {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (await predicate()) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  throw new Error('Timed out while waiting for condition.');
+};
+
 afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
@@ -58,6 +81,7 @@ describe('AutomationService', () => {
       () => {
         events.push('changed');
       },
+      () => undefined,
     );
 
     const automation = await service.createAutomation({
@@ -128,6 +152,7 @@ describe('AutomationService', () => {
         },
       }),
       () => undefined,
+      () => undefined,
     );
 
     const automation = await service.createAutomation({
@@ -145,6 +170,68 @@ describe('AutomationService', () => {
       readFile: 'allow',
       outsideWorkspaceReads: 'block',
       writeFile: 'allow',
+      outsideWorkspaceWrites: 'block',
+      executeTerminal: 'allow',
+      outsideWorkspaceTerminal: 'block',
+      riskyTerminal: 'block',
+    });
+  });
+
+  it('preserves ask-first permissions for in-workspace automation tools so runs can pause for approval', async () => {
+    const baseDir = await createTempDir();
+    const automationStore = new AutomationStore(baseDir);
+    const sessionStore = new SessionStore(baseDir);
+    let receivedToolPolicy: AppConfig['toolPolicy'] | null = null;
+
+    const llmServiceStub = {
+      startChat: async ({ sessionId, config }: { sessionId: string; config: AppConfig }) => {
+        receivedToolPolicy = config.toolPolicy;
+        await sessionStore.upsert({
+          id: sessionId,
+          prompt: 'automation prompt',
+          updatedAt: new Date().toISOString(),
+          messages: [
+            { role: 'developer', content: 'automation prompt' },
+            { role: 'assistant', content: 'Automation done.' },
+          ],
+        });
+      },
+    } as never;
+
+    const service = new AutomationService(
+      automationStore,
+      sessionStore,
+      llmServiceStub,
+      async () => ({
+        providerId: DEFAULT_PROVIDER_ID,
+        baseUrl: DEFAULT_BASE_URL,
+        apiKey: 'test-key',
+        model: 'gpt-5.4',
+        systemPrompt: 'system',
+        toolPolicy: {
+          ...DEFAULT_TOOL_POLICY,
+          writeFile: 'ask',
+        },
+      }),
+      () => undefined,
+      () => undefined,
+    );
+
+    const automation = await service.createAutomation({
+      name: 'Approval-ready automation',
+      prompt: 'Write a file after approval.',
+      schedule: {
+        kind: 'interval',
+        intervalMinutes: 30,
+      },
+    });
+
+    await service.runAutomationNow(automation.id);
+
+    expect(receivedToolPolicy).toEqual({
+      readFile: 'allow',
+      outsideWorkspaceReads: 'block',
+      writeFile: 'ask',
       outsideWorkspaceWrites: 'block',
       executeTerminal: 'allow',
       outsideWorkspaceTerminal: 'block',
@@ -173,6 +260,7 @@ describe('AutomationService', () => {
         systemPrompt: 'system',
         toolPolicy: DEFAULT_TOOL_POLICY,
       }),
+      () => undefined,
       () => undefined,
     );
 
@@ -216,6 +304,7 @@ describe('AutomationService', () => {
         toolPolicy: DEFAULT_TOOL_POLICY,
       }),
       () => undefined,
+      () => undefined,
     );
 
     const automation = await service.createAutomation({
@@ -257,6 +346,7 @@ describe('AutomationService', () => {
         systemPrompt: 'system',
         toolPolicy: DEFAULT_TOOL_POLICY,
       }),
+      () => undefined,
       () => undefined,
     );
 
@@ -313,6 +403,7 @@ describe('AutomationService', () => {
         toolPolicy: DEFAULT_TOOL_POLICY,
       }),
       () => undefined,
+      () => undefined,
     );
 
     const automation = await service.createAutomation({
@@ -330,5 +421,110 @@ describe('AutomationService', () => {
     expect(run.outputTruncated).toBe(true);
     expect(run.output?.length).toBeLessThanOrEqual(12_000);
     expect(run.output?.endsWith('...')).toBe(true);
+  });
+
+  it('keeps automation runs pending while an approval is unresolved', async () => {
+    const baseDir = await createTempDir();
+    const automationStore = new AutomationStore(baseDir);
+    const sessionStore = new SessionStore(baseDir);
+    const gate = createDeferred();
+
+    const llmServiceStub = {
+      startChat: async (
+        { requestId, sessionId }: { requestId: string; sessionId: string },
+        emitEvent: (event: {
+          type: 'approval.requested';
+          requestId: string;
+          approval: {
+            id: string;
+            requestId: string;
+            source: 'automation';
+            toolName: string;
+            policyKey: 'writeFile';
+            argumentsText: string;
+            reason: string;
+            requestedAt: string;
+            scopeOptions: ['once', 'request', 'always'];
+          };
+        }) => void,
+      ) => {
+        emitEvent({
+          type: 'approval.requested',
+          requestId,
+          approval: {
+            id: 'approval-1',
+            requestId,
+            source: 'automation',
+            toolName: 'write_file',
+            policyKey: 'writeFile',
+            argumentsText: '{\n  "path": "notes.txt"\n}',
+            reason: 'write_file is not fully allowed in the current tool policy.',
+            requestedAt: new Date().toISOString(),
+            scopeOptions: ['once', 'request', 'always'],
+          },
+        });
+
+        await gate.promise;
+        await sessionStore.upsert({
+          id: sessionId,
+          prompt: 'automation prompt',
+          updatedAt: new Date().toISOString(),
+          messages: [
+            { role: 'developer', content: 'automation prompt' },
+            { role: 'assistant', content: 'Automation completed after approval.' },
+          ],
+        });
+      },
+    } as never;
+
+    const service = new AutomationService(
+      automationStore,
+      sessionStore,
+      llmServiceStub,
+      async () => ({
+        providerId: DEFAULT_PROVIDER_ID,
+        baseUrl: DEFAULT_BASE_URL,
+        apiKey: 'test-key',
+        model: 'gpt-5.4',
+        systemPrompt: 'system',
+        toolPolicy: {
+          ...DEFAULT_TOOL_POLICY,
+          writeFile: 'ask',
+        },
+      }),
+      () => undefined,
+      () => undefined,
+    );
+
+    const automation = await service.createAutomation({
+      name: 'Approval wait automation',
+      prompt: 'Write a file after approval.',
+      schedule: {
+        kind: 'interval',
+        intervalMinutes: 30,
+      },
+    });
+
+    const runPromise = service.runAutomationNow(automation.id);
+    await waitFor(async () => {
+      const runs = await service.listRuns();
+      return runs[0]?.summary.includes('Waiting for approval') ?? false;
+    });
+
+    const interimRuns = await service.listRuns();
+    const interimAutomations = await service.listAutomations();
+
+    expect(interimRuns[0]?.status).toBe('running');
+    expect(interimRuns[0]?.summary).toContain('Waiting for approval');
+    expect(interimAutomations[0]?.lastRunStatus).toBe('running');
+    expect(interimAutomations[0]?.nextRunAt).toBeNull();
+
+    gate.resolve();
+    const run = await runPromise;
+    const updatedAutomations = await service.listAutomations();
+
+    expect(run.status).toBe('completed');
+    expect(updatedAutomations[0]?.lastRunStatus).toBe('completed');
+    expect(updatedAutomations[0]?.nextRunAt).toBeTruthy();
   });
 });

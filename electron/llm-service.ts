@@ -1363,6 +1363,7 @@ export class LlmService {
     const approval: ToolApprovalRequestRecord = {
       id: createId(),
       requestId,
+      source: requestId.startsWith('automation:') ? 'automation' : 'chat',
       toolName: input.toolName,
       policyKey: input.violation.policyKey,
       argumentsText: input.argumentsText,

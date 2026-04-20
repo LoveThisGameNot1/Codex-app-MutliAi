@@ -160,26 +160,24 @@ export class AutomationStore {
   }
 
   public async loadRuns(): Promise<AutomationRunRecord[]> {
-    try {
-      const raw = await fs.readFile(this.runsFilePath, 'utf8');
-      const parsed = JSON.parse(raw) as unknown[];
-      if (!Array.isArray(parsed)) {
-        return [];
-      }
+    return this.readRuns();
+  }
 
-      return sortRuns(parsed.map(sanitizeRun).filter((value): value is AutomationRunRecord => Boolean(value))).map(
-        (run) =>
-          run.status === 'running'
-            ? {
-                ...run,
-                status: 'failed',
-                finishedAt: run.finishedAt ?? new Date().toISOString(),
-                summary: 'Automation run was interrupted because the app closed before completion.',
-              }
-            : run,
-      );
-    } catch {
-      return [];
+  public async markInterruptedRunsAsFailed(): Promise<void> {
+    const runs = await this.readRuns();
+    const repairedRuns = runs.map((run) =>
+      run.status === 'running'
+        ? {
+            ...run,
+            status: 'failed' as const,
+            finishedAt: run.finishedAt ?? new Date().toISOString(),
+            summary: 'Automation run was interrupted because the app closed before completion.',
+          }
+        : run,
+    );
+
+    if (repairedRuns.some((run, index) => run !== runs[index])) {
+      await this.writeJson(this.runsFilePath, repairedRuns);
     }
   }
 
@@ -199,7 +197,7 @@ export class AutomationStore {
       automations.filter((automation) => automation.id !== automationId),
     );
 
-    const runs = await this.loadRuns();
+    const runs = await this.readRuns();
     await this.writeJson(
       this.runsFilePath,
       runs.filter((run) => run.automationId !== automationId),
@@ -207,9 +205,23 @@ export class AutomationStore {
   }
 
   public async upsertRun(run: AutomationRunRecord): Promise<void> {
-    const runs = await this.loadRuns();
+    const runs = await this.readRuns();
     const next = sortRuns([run, ...runs.filter((item) => item.id !== run.id)]).slice(0, MAX_RUNS);
     await this.writeJson(this.runsFilePath, next);
+  }
+
+  private async readRuns(): Promise<AutomationRunRecord[]> {
+    try {
+      const raw = await fs.readFile(this.runsFilePath, 'utf8');
+      const parsed = JSON.parse(raw) as unknown[];
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+
+      return sortRuns(parsed.map(sanitizeRun).filter((value): value is AutomationRunRecord => Boolean(value)));
+    } catch {
+      return [];
+    }
   }
 
   private async writeJson(filePath: string, value: unknown): Promise<void> {

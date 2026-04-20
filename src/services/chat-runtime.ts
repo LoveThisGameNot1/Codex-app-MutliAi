@@ -167,11 +167,28 @@ class ChatRuntime {
   }
 
   private async handleEvent(event: ChatStreamEvent): Promise<void> {
+    const state = useAppStore.getState();
+
+    switch (event.type) {
+      case 'approval.requested': {
+        state.addPendingToolApproval(event.approval);
+        return;
+      }
+      case 'approval.resolved': {
+        state.resolvePendingToolApproval({
+          approvalId: event.approvalId,
+          decision: event.decision,
+          scope: event.scope,
+        });
+        return;
+      }
+      default:
+        break;
+    }
+
     if (event.requestId !== this.activeRequestId) {
       return;
     }
-
-    const state = useAppStore.getState();
 
     switch (event.type) {
       case 'chat.started': {
@@ -200,18 +217,6 @@ class ChatRuntime {
       case 'tool.completed':
       case 'tool.failed': {
         state.updateToolExecution(event.tool);
-        return;
-      }
-      case 'approval.requested': {
-        state.addPendingToolApproval(event.approval);
-        return;
-      }
-      case 'approval.resolved': {
-        state.resolvePendingToolApproval({
-          approvalId: event.approvalId,
-          decision: event.decision,
-          scope: event.scope,
-        });
         return;
       }
       case 'chat.cancelled': {

@@ -31,6 +31,9 @@ export const ApprovalCenter = () => {
             <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] uppercase tracking-[0.2em] text-slate-300">
+                    {approval.source === 'automation' ? 'automation' : 'chat'}
+                  </span>
                   <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-amber-50">
                     {approval.toolName}
                   </span>
