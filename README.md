@@ -54,6 +54,7 @@ npm run dist
 ## Git workflow
 
 - Nutze `feature/*`, `fix/*`, `hotfix/*` oder `release/*` Branches fuer neue Arbeit.
+- Commit-Messages, Branch-Namen, Pull-Request-Titel und Patchnotes werden auf Englisch geschrieben.
 - Pushes und Pull Requests gegen `main` oder `develop` laufen automatisch durch GitHub Actions CI.
 - Releases werden ueber Git-Tags im Format `vX.Y.Z` erstellt und bauen automatisch den Windows-Installer.
 - Details stehen in `docs/WORKFLOW.md`.

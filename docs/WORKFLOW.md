@@ -29,3 +29,4 @@
 - CI validates tests and production builds on every push and pull request.
 - The release workflow is intentionally tag-driven so normal feature work does not build installers on every commit.
 - If code signing is added later, extend the release workflow with the required signing secrets rather than changing the local developer flow.
+- Use English for commit messages, branch names, pull request titles, and patch notes.
