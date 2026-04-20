@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { AutomationRecord, AutomationWeekday } from '../../shared/contracts';
+import { summarizeAutomationToolPolicy } from '../../shared/tool-policy';
 import { automationRuntime } from '@/services/automation-runtime';
 import {
   buildAutomationSchedule,
@@ -156,6 +157,7 @@ const ScheduleFields = ({
 };
 
 export const AutomationPanel = () => {
+  const config = useAppStore((state) => state.config);
   const automations = useAppStore((state) => state.automations);
   const automationRuns = useAppStore((state) => state.automationRuns);
   const [name, setName] = useState('');
@@ -172,6 +174,7 @@ export const AutomationPanel = () => {
 
   const latestRuns = useMemo(() => automationRuns.slice(0, 8), [automationRuns]);
   const latestRunByAutomationId = useMemo(() => getLatestAutomationRuns(automationRuns), [automationRuns]);
+  const automationPolicySummary = useMemo(() => summarizeAutomationToolPolicy(config.toolPolicy), [config.toolPolicy]);
 
   const resetCreateForm = (): void => {
     setName('');
@@ -269,7 +272,8 @@ export const AutomationPanel = () => {
         <div>
           <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Automations</h4>
           <p className="mt-1 text-sm text-slate-500">
-            Recurring jobs that can wake up later, use tools, and continue working without manual prompting.
+            Recurring jobs that can wake up later, use tools inside unattended-safe limits, and continue working without
+            manual prompting.
           </p>
         </div>
         <div className="flex gap-2">
@@ -290,6 +294,35 @@ export const AutomationPanel = () => {
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
           <p className="text-sm font-medium text-slate-100">Create Automation</p>
           <div className="mt-3 grid gap-3">
+            <div className="rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-100">Unattended Safety</p>
+              <p className="mt-2 text-sm text-amber-50">{automationPolicySummary.headline}</p>
+              <p className="mt-2 text-xs leading-6 text-amber-100/80">{automationPolicySummary.detail}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {automationPolicySummary.allowedCapabilities.map((capability) => (
+                  <span
+                    key={capability}
+                    className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2.5 py-1 text-[11px] text-emerald-100"
+                  >
+                    {capability}
+                  </span>
+                ))}
+                {automationPolicySummary.blockedCapabilities.map((capability) => (
+                  <span
+                    key={capability}
+                    className="rounded-full border border-rose-300/20 bg-rose-300/10 px-2.5 py-1 text-[11px] text-rose-100"
+                  >
+                    {capability} blocked
+                  </span>
+                ))}
+                <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] text-slate-300">
+                  outside-workspace access blocked
+                </span>
+                <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] text-slate-300">
+                  risky terminal blocked
+                </span>
+              </div>
+            </div>
             <label className="flex flex-col gap-2 text-sm text-slate-300">
               Name
               <input

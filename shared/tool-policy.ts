@@ -87,3 +87,69 @@ export const deriveAutomationToolPolicy = (policyInput?: Partial<ToolPolicyConfi
     riskyTerminal: 'block',
   };
 };
+
+export type AutomationToolPolicySummary = {
+  headline: string;
+  detail: string;
+  allowedCapabilities: string[];
+  blockedCapabilities: string[];
+};
+
+const joinLabels = (labels: string[]): string => {
+  if (labels.length === 0) {
+    return '';
+  }
+
+  if (labels.length === 1) {
+    return labels[0];
+  }
+
+  if (labels.length === 2) {
+    return `${labels[0]} and ${labels[1]}`;
+  }
+
+  return `${labels.slice(0, -1).join(', ')}, and ${labels.at(-1)}`;
+};
+
+export const summarizeAutomationToolPolicy = (
+  policyInput?: Partial<ToolPolicyConfig> | null,
+): AutomationToolPolicySummary => {
+  const policy = deriveAutomationToolPolicy(policyInput);
+  const allowedCapabilities: string[] = [];
+  const blockedCapabilities: string[] = [];
+
+  if (policy.readFile === 'allow') {
+    allowedCapabilities.push('workspace reads');
+  } else {
+    blockedCapabilities.push('workspace reads');
+  }
+
+  if (policy.writeFile === 'allow') {
+    allowedCapabilities.push('workspace writes');
+  } else {
+    blockedCapabilities.push('workspace writes');
+  }
+
+  if (policy.executeTerminal === 'allow') {
+    allowedCapabilities.push('workspace terminal runs');
+  } else {
+    blockedCapabilities.push('workspace terminal runs');
+  }
+
+  const headline =
+    allowedCapabilities.length > 0
+      ? `Scheduled runs can use ${joinLabels(allowedCapabilities)} without stopping for approval.`
+      : 'Scheduled runs are currently limited to chat-only work until unattended tool access is allowed.';
+
+  const limitedDetail =
+    blockedCapabilities.length > 0
+      ? `Currently blocked for unattended runs: ${joinLabels(blockedCapabilities)}.`
+      : 'All in-workspace tool categories currently stay available to scheduled runs.';
+
+  return {
+    headline,
+    detail: `${limitedDetail} Outside-workspace file access, terminal runs outside the project, and risky terminal commands are always blocked.`,
+    allowedCapabilities,
+    blockedCapabilities,
+  };
+};
