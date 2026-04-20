@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { ApprovalCenter } from '@/components/ApprovalCenter';
 import { AutomationInbox } from '@/components/AutomationInbox';
+import { AutomationPanel } from '@/components/AutomationPanel';
 import { ChatComposer } from '@/components/ChatComposer';
 import { MarkdownMessage } from '@/components/MarkdownMessage';
+import { PluginsPanel } from '@/components/PluginsPanel';
+import { SearchPanel } from '@/components/SearchPanel';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { countUnreadAutomationRuns } from '@/services/automation-inbox';
 import { useAppStore } from '@/store/app-store';
@@ -22,26 +25,62 @@ const roleLabels: Record<string, string> = {
   system: 'System',
 };
 
+const sectionMeta = {
+  chat: {
+    kicker: 'Workspace Chat',
+    title: 'Tool-aware conversation',
+    description:
+      'Stream markdown into the timeline, route artifacts into the studio, and keep approvals and automation updates in one place.',
+  },
+  search: {
+    kicker: 'Workspace Search',
+    title: 'Search sessions, automations, and artifacts',
+    description:
+      'A calmer index over everything we have generated or scheduled so far, without leaving the current workspace.',
+  },
+  plugins: {
+    kicker: 'Plugins & Integrations',
+    title: 'Inspect active providers and tool surfaces',
+    description:
+      'See which integrations are live today and how the current model profile affects agent-style behavior.',
+  },
+  automations: {
+    kicker: 'Automation Center',
+    title: 'Manage scheduled work',
+    description:
+      'Create, edit, inspect, and supervise recurring tasks without burying them inside the chat stream.',
+  },
+  settings: {
+    kicker: 'Runtime Settings',
+    title: 'Adjust providers, policies, and sessions',
+    description:
+      'Configure model access, tool guardrails, saved sessions, and the broader runtime from one dedicated surface.',
+  },
+} as const;
+
 export const ChatPanel = () => {
   const messages = useAppStore((state) => state.messages);
   const toolExecutions = useAppStore((state) => state.toolExecutions);
   const lastError = useAppStore((state) => state.lastError);
   const isStreaming = useAppStore((state) => state.isStreaming);
-  const settingsOpen = useAppStore((state) => state.settingsOpen);
-  const setSettingsOpen = useAppStore((state) => state.setSettingsOpen);
+  const workspaceSection = useAppStore((state) => state.workspaceSection);
   const automationRuns = useAppStore((state) => state.automationRuns);
   const acknowledgedAutomationRunIds = useAppStore((state) => state.acknowledgedAutomationRunIds);
   const pendingToolApprovals = useAppStore((state) => state.pendingToolApprovals);
   const timelineRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (workspaceSection !== 'chat') {
+      return;
+    }
+
     const element = timelineRef.current;
     if (!element) {
       return;
     }
 
     element.scrollTop = element.scrollHeight;
-  }, [messages, toolExecutions]);
+  }, [messages, toolExecutions, workspaceSection]);
 
   const toolSummary = useMemo(
     () => ({
@@ -56,48 +95,10 @@ export const ChatPanel = () => {
     [acknowledgedAutomationRunIds, automationRuns],
   );
 
-  return (
-    <section className="flex min-h-[600px] flex-col gap-4">
-      <div className="rounded-[28px] border border-white/10 bg-slate-900/75 p-5 shadow-panel backdrop-blur">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-sky-300/80">Chat Control</p>
-            <h2 className="mt-2 text-2xl font-semibold text-white">Tool-Aware Conversation</h2>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">
-              The assistant streams markdown into the left pane while any detected
-              <code className="ml-1 rounded bg-slate-950 px-1.5 py-0.5 text-sky-200">&lt;artifact&gt;</code>
-              payloads are peeled off into the studio.
-            </p>
-          </div>
+  const activeSectionMeta = sectionMeta[workspaceSection];
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
-              {isStreaming ? 'Streaming' : 'Idle'}
-            </span>
-            <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs text-emerald-200">
-              {toolSummary.running} tools running
-            </span>
-            <span className="rounded-full border border-rose-400/20 bg-rose-400/10 px-3 py-1 text-xs text-rose-200">
-              {toolSummary.failed} failed
-            </span>
-            <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-xs text-amber-100">
-              {unreadAutomationCount} automation alerts
-            </span>
-            <span className="rounded-full border border-amber-100/20 bg-amber-100/10 px-3 py-1 text-xs text-amber-50">
-              {pendingToolApprovals.length} approvals
-            </span>
-            <button
-              type="button"
-              onClick={() => setSettingsOpen(!settingsOpen)}
-              className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs text-slate-300 transition hover:bg-white/10"
-            >
-              {settingsOpen ? 'Hide Settings' : 'Show Settings'}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <SettingsPanel />
+  const renderChatTimeline = () => (
+    <>
       <ApprovalCenter />
       <AutomationInbox />
 
@@ -113,7 +114,7 @@ export const ChatPanel = () => {
                 Ask for code generation, file edits, terminal execution, or a self-contained UI artifact.
               </p>
               <p className="mt-3 text-sm leading-6 text-slate-400">
-                Example: "Build a pricing page artifact in React and write the files into src/pages."
+                Example: &quot;Build a pricing page artifact in React and write the files into src/pages.&quot;
               </p>
             </div>
           </div>
@@ -162,6 +163,62 @@ export const ChatPanel = () => {
       ) : null}
 
       <ChatComposer />
+    </>
+  );
+
+  const renderWorkspaceBody = () => {
+    switch (workspaceSection) {
+      case 'search':
+        return <SearchPanel />;
+      case 'plugins':
+        return <PluginsPanel />;
+      case 'automations':
+        return (
+          <>
+            <ApprovalCenter />
+            <AutomationInbox />
+            <AutomationPanel />
+          </>
+        );
+      case 'settings':
+        return <SettingsPanel embedded />;
+      case 'chat':
+      default:
+        return renderChatTimeline();
+    }
+  };
+
+  return (
+    <section className="flex min-h-[600px] flex-col gap-4">
+      <div className="rounded-[28px] border border-white/10 bg-slate-900/75 p-5 shadow-panel backdrop-blur">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-sky-300/80">{activeSectionMeta.kicker}</p>
+            <h2 className="mt-2 text-2xl font-semibold text-white">{activeSectionMeta.title}</h2>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">{activeSectionMeta.description}</p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+              {isStreaming ? 'Streaming' : 'Idle'}
+            </span>
+            <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs text-emerald-200">
+              {toolSummary.running} tools running
+            </span>
+            <span className="rounded-full border border-rose-400/20 bg-rose-400/10 px-3 py-1 text-xs text-rose-200">
+              {toolSummary.failed} failed
+            </span>
+            <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-xs text-amber-100">
+              {unreadAutomationCount} automation alerts
+            </span>
+            <span className="rounded-full border border-amber-100/20 bg-amber-100/10 px-3 py-1 text-xs text-amber-50">
+              {pendingToolApprovals.length} approvals
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {renderWorkspaceBody()}
     </section>
   );
 };

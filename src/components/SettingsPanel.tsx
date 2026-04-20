@@ -64,7 +64,7 @@ const policyTone = (mode: ToolAccessMode): string => {
   return 'border-rose-300/30 bg-rose-300/10 text-rose-100';
 };
 
-export const SettingsPanel = () => {
+export const SettingsPanel = ({ embedded = false }: { embedded?: boolean }) => {
   const config = useAppStore((state) => state.config);
   const updateConfig = useAppStore((state) => state.updateConfig);
   const isOpen = useAppStore((state) => state.settingsOpen);
@@ -136,7 +136,7 @@ export const SettingsPanel = () => {
     };
   }, [autoRefreshKey, isOpen, loadProviderModels]);
 
-  if (!isOpen) {
+  if (!embedded && !isOpen) {
     return null;
   }
 
@@ -150,13 +150,15 @@ export const SettingsPanel = () => {
             supports multiple OpenAI-compatible providers, not just OpenAI.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setSettingsOpen(false)}
-          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300 transition hover:bg-white/10"
-        >
-          Close
-        </button>
+        {!embedded ? (
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(false)}
+            className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300 transition hover:bg-white/10"
+          >
+            Close
+          </button>
+        ) : null}
       </div>
 
       <div className="grid gap-4 xl:grid-cols-3">

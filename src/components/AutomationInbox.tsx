@@ -20,7 +20,7 @@ export const AutomationInbox = () => {
   const acknowledgedAutomationRunIds = useAppStore((state) => state.acknowledgedAutomationRunIds);
   const acknowledgeAutomationRun = useAppStore((state) => state.acknowledgeAutomationRun);
   const acknowledgeAutomationRuns = useAppStore((state) => state.acknowledgeAutomationRuns);
-  const setSettingsOpen = useAppStore((state) => state.setSettingsOpen);
+  const setWorkspaceSection = useAppStore((state) => state.setWorkspaceSection);
 
   const inboxItems = buildAutomationInboxItems(automationRuns, acknowledgedAutomationRunIds);
   const unreadCount = countUnreadAutomationRuns(automationRuns, acknowledgedAutomationRunIds);
@@ -33,7 +33,7 @@ export const AutomationInbox = () => {
     if (runId) {
       acknowledgeAutomationRun(runId);
     }
-    setSettingsOpen(true);
+    setWorkspaceSection('automations');
   };
 
   return (
@@ -61,7 +61,7 @@ export const AutomationInbox = () => {
           ) : null}
           <button
             type="button"
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => setWorkspaceSection('automations')}
             className="rounded-full border border-amber-300/30 bg-amber-300/10 px-4 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-300/20"
           >
             Open Automation Center

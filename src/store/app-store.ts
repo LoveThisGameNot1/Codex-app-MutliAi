@@ -26,6 +26,8 @@ const createId = (): string =>
 const createSessionId = (): string => createId();
 const MAX_ACKNOWLEDGED_AUTOMATION_RUN_IDS = 200;
 
+export type WorkspaceSection = 'chat' | 'search' | 'plugins' | 'automations' | 'settings';
+
 export type AppState = {
   appInfo: DesktopAppInfo | null;
   config: AppConfig;
@@ -44,12 +46,14 @@ export type AppState = {
   isStreaming: boolean;
   activeRequestId: string | null;
   settingsOpen: boolean;
+  workspaceSection: WorkspaceSection;
   lastError: string | null;
   setAppInfo: (appInfo: DesktopAppInfo | null) => void;
   hydrateConfig: (config: AppConfig) => void;
   updateConfig: (updater: (current: AppConfig) => AppConfig) => void;
   setComposerValue: (value: string) => void;
   setSettingsOpen: (open: boolean) => void;
+  setWorkspaceSection: (section: WorkspaceSection) => void;
   setPersistedSessions: (sessions: PersistedSessionSummary[]) => void;
   setAutomations: (automations: AutomationRecord[]) => void;
   setAutomationRuns: (runs: AutomationRunRecord[]) => void;
@@ -154,6 +158,7 @@ export const useAppStore = create<AppState>()(
       isStreaming: false,
       activeRequestId: null,
       settingsOpen: false,
+      workspaceSection: 'chat',
       lastError: null,
       setAppInfo: (appInfo) => set({ appInfo }),
       hydrateConfig: (config) => set({ config: normalizeConfig(config) }),
@@ -162,7 +167,17 @@ export const useAppStore = create<AppState>()(
           config: normalizeConfig(updater(normalizeConfig(state.config))),
         })),
       setComposerValue: (composerValue) => set({ composerValue }),
-      setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+      setSettingsOpen: (settingsOpen) =>
+        set((state) => ({
+          settingsOpen,
+          workspaceSection:
+            settingsOpen ? 'settings' : state.workspaceSection === 'settings' ? 'chat' : state.workspaceSection,
+        })),
+      setWorkspaceSection: (workspaceSection) =>
+        set({
+          workspaceSection,
+          settingsOpen: workspaceSection === 'settings',
+        }),
       setPersistedSessions: (persistedSessions) => set({ persistedSessions }),
       setAutomations: (automations) => set({ automations }),
       setAutomationRuns: (automationRuns) =>
@@ -199,6 +214,7 @@ export const useAppStore = create<AppState>()(
           isStreaming: false,
           activeRequestId: null,
           lastError: null,
+          workspaceSection: 'chat',
         })),
       beginStreaming: (requestId) => {
         const assistantMessageId = createId();
@@ -407,6 +423,7 @@ export const useAppStore = create<AppState>()(
         acknowledgedAutomationRunIds: state.acknowledgedAutomationRunIds,
         composerValue: state.composerValue,
         settingsOpen: state.settingsOpen,
+        workspaceSection: state.workspaceSection,
         lastError: state.lastError,
       }),
       onRehydrateStorage: () => (state) => {
