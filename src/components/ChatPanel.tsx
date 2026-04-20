@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import { ApprovalCenter } from '@/components/ApprovalCenter';
 import { AutomationInbox } from '@/components/AutomationInbox';
 import { ChatComposer } from '@/components/ChatComposer';
 import { MarkdownMessage } from '@/components/MarkdownMessage';
@@ -30,6 +31,7 @@ export const ChatPanel = () => {
   const setSettingsOpen = useAppStore((state) => state.setSettingsOpen);
   const automationRuns = useAppStore((state) => state.automationRuns);
   const acknowledgedAutomationRunIds = useAppStore((state) => state.acknowledgedAutomationRunIds);
+  const pendingToolApprovals = useAppStore((state) => state.pendingToolApprovals);
   const timelineRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -81,6 +83,9 @@ export const ChatPanel = () => {
             <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-xs text-amber-100">
               {unreadAutomationCount} automation alerts
             </span>
+            <span className="rounded-full border border-amber-100/20 bg-amber-100/10 px-3 py-1 text-xs text-amber-50">
+              {pendingToolApprovals.length} approvals
+            </span>
             <button
               type="button"
               onClick={() => setSettingsOpen(!settingsOpen)}
@@ -93,6 +98,7 @@ export const ChatPanel = () => {
       </div>
 
       <SettingsPanel />
+      <ApprovalCenter />
       <AutomationInbox />
 
       <div

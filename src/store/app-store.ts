@@ -9,6 +9,9 @@ import type {
   ChatMessage,
   DesktopAppInfo,
   PersistedSessionSummary,
+  ToolApprovalDecision,
+  ToolApprovalRequestRecord,
+  ToolApprovalScope,
   ToolExecutionRecord,
 } from '../../shared/contracts';
 import { DEFAULT_BASE_URL, DEFAULT_MODEL, DEFAULT_PROVIDER_ID, DEFAULT_SYSTEM_PROMPT } from '../../shared/contracts';
@@ -32,6 +35,7 @@ export type AppState = {
   activeArtifactId: string | null;
   artifactView: ArtifactViewMode;
   toolExecutions: ToolExecutionRecord[];
+  pendingToolApprovals: ToolApprovalRequestRecord[];
   persistedSessions: PersistedSessionSummary[];
   automations: AutomationRecord[];
   automationRuns: AutomationRunRecord[];
@@ -64,6 +68,12 @@ export type AppState = {
   addUserMessage: (content: string) => void;
   addToolExecution: (tool: ToolExecutionRecord) => void;
   updateToolExecution: (tool: ToolExecutionRecord) => void;
+  addPendingToolApproval: (approval: ToolApprovalRequestRecord) => void;
+  resolvePendingToolApproval: (input: {
+    approvalId: string;
+    decision: ToolApprovalDecision;
+    scope?: ToolApprovalScope;
+  }) => void;
   upsertArtifact: (artifact: ArtifactRecord) => void;
   appendArtifactContent: (artifactId: string, delta: string) => void;
   finalizeArtifact: (artifactId: string) => void;
@@ -135,6 +145,7 @@ export const useAppStore = create<AppState>()(
       activeArtifactId: null,
       artifactView: 'code',
       toolExecutions: [],
+      pendingToolApprovals: [],
       persistedSessions: [],
       automations: [],
       automationRuns: [],
@@ -181,6 +192,7 @@ export const useAppStore = create<AppState>()(
           messages,
           artifacts,
           toolExecutions,
+          pendingToolApprovals: [],
           activeArtifactId: artifacts[0]?.id ?? null,
           artifactView: artifacts.length > 0 ? state.artifactView : 'code',
           composerValue: '',
@@ -273,6 +285,39 @@ export const useAppStore = create<AppState>()(
               : message,
           ),
         })),
+      addPendingToolApproval: (approval) =>
+        set((state) => ({
+          pendingToolApprovals: [approval, ...state.pendingToolApprovals.filter((item) => item.id !== approval.id)],
+          messages: [
+            ...state.messages,
+            {
+              id: `${approval.id}:approval`,
+              role: 'system',
+              content: `Approval needed for ${approval.toolName}\n\n${approval.reason}`,
+              createdAt: approval.requestedAt,
+              status: 'complete',
+              toolApprovalId: approval.id,
+            },
+          ],
+        })),
+      resolvePendingToolApproval: ({ approvalId, decision, scope }) =>
+        set((state) => ({
+          pendingToolApprovals: state.pendingToolApprovals.filter((approval) => approval.id !== approvalId),
+          messages: [
+            ...state.messages,
+            {
+              id: `${approvalId}:resolved:${decision}:${Date.now()}`,
+              role: 'system',
+              content:
+                decision === 'approve'
+                  ? `Approval granted${scope === 'request' ? ' for the rest of this run' : ' once'}.\n\nThe agent can continue.`
+                  : 'Approval rejected.\n\nThe pending tool action was denied.',
+              createdAt: nowIso(),
+              status: decision === 'approve' ? 'complete' : 'error',
+              toolApprovalId: approvalId,
+            },
+          ],
+        })),
       upsertArtifact: (artifact) =>
         set((state) => {
           const existing = state.artifacts.find((item) => item.id === artifact.id);
@@ -312,6 +357,7 @@ export const useAppStore = create<AppState>()(
           artifacts: [],
           activeArtifactId: null,
           toolExecutions: [],
+          pendingToolApprovals: [],
           composerValue: '',
           isStreaming: false,
           activeRequestId: null,
@@ -324,6 +370,7 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           isStreaming: false,
           activeRequestId: null,
+          pendingToolApprovals: [],
           messages: sanitizeRecoveredMessages(state.messages),
           artifacts: sanitizeRecoveredArtifacts(state.artifacts),
           toolExecutions: sanitizeRecoveredTools(state.toolExecutions),

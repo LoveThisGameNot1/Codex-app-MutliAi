@@ -6,6 +6,7 @@ import {
   CreateAutomationInput,
   CancelChatRequest,
   ChatStreamEvent,
+  ResolveToolApprovalInput,
   ResetChatRequest,
   StartChatRequest,
   UpdateAutomationInput,
@@ -113,6 +114,10 @@ const registerIpcHandlers = (): void => {
   ipcMain.handle('chat:reset', async (_event, request: ResetChatRequest) => {
     const config = await configStore.get();
     await llmService.resetSession(request.sessionId, config);
+  });
+
+  ipcMain.handle('chat:resolve-approval', async (_event, input: ResolveToolApprovalInput) => {
+    await llmService.resolveToolApproval(input);
   });
 };
 

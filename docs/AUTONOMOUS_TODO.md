@@ -17,9 +17,9 @@ Build a local-first AI coding desktop app that combines:
 
 ## Priority 1: Approval Center And Safer Autonomy
 
-- [ ] Build a real in-app approval center for blocked `read_file`, `write_file`, and `execute_terminal` actions.
-- [ ] Add approve once / approve for run / always allow options where safe.
-- [ ] Show pending approvals in the chat timeline and a dedicated review panel.
+- [x] Build a real in-app approval center for blocked `read_file`, `write_file`, and `execute_terminal` actions.
+- [-] Add approve once / approve for run / always allow options where safe.
+- [x] Show pending approvals in the chat timeline and a dedicated review panel.
 - [ ] Let automations pause on approval-required actions instead of only failing with a policy message.
 - [ ] Add tests for approval lifecycle, cancellation, expiry, and replay protection.
 

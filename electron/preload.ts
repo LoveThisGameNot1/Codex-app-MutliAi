@@ -12,6 +12,7 @@ import type {
   PersistedSessionPayload,
   PersistedSessionSummary,
   ResetChatRequest,
+  ResolveToolApprovalInput,
   StartChatRequest,
   UpdateAutomationInput,
 } from '../shared/contracts';
@@ -36,6 +37,7 @@ const desktopApi: DesktopApi = {
   startChat: (request: StartChatRequest): Promise<void> => ipcRenderer.invoke('chat:start', request),
   cancelChat: (request: CancelChatRequest): Promise<void> => ipcRenderer.invoke('chat:cancel', request),
   resetChat: (request: ResetChatRequest): Promise<void> => ipcRenderer.invoke('chat:reset', request),
+  resolveToolApproval: (input: ResolveToolApprovalInput): Promise<void> => ipcRenderer.invoke('chat:resolve-approval', input),
   onChatEvent: (listener: (event: ChatStreamEvent) => void) => {
     const wrappedListener = (_event: Electron.IpcRendererEvent, payload: ChatStreamEvent) => {
       listener(payload);

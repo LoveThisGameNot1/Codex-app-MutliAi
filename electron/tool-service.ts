@@ -1,9 +1,14 @@
 import { exec } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { ToolPolicyConfig } from '../shared/contracts';
+import type { ToolApprovalScope, ToolPolicyConfig } from '../shared/contracts';
 import { DEFAULT_TOOL_POLICY } from '../shared/tool-policy';
-import { getReadPolicyViolation, getTerminalPolicyViolation, getWritePolicyViolation } from './tool-policy';
+import {
+  getReadPolicyViolation,
+  getTerminalPolicyViolation,
+  getWritePolicyViolation,
+  type ToolPolicyViolation,
+} from './tool-policy';
 
 const MAX_FILE_BYTES = 1024 * 1024 * 2;
 const MAX_RETURN_BYTES = 120 * 1024;
@@ -13,6 +18,17 @@ export type ToolContext = {
   workspaceRoot: string;
   signal?: AbortSignal;
   toolPolicy?: ToolPolicyConfig;
+  approvalState?: {
+    grantedPolicies: Set<keyof ToolPolicyConfig>;
+  };
+  requestApproval?: (input: {
+    toolName: string;
+    argumentsText: string;
+    violation: ToolPolicyViolation;
+  }) => Promise<{
+    approved: boolean;
+    scope?: ToolApprovalScope;
+  }>;
 };
 
 export type ReadFileArgs = {
@@ -55,6 +71,8 @@ const resolveInputPath = (inputPath: string, workspaceRoot: string): string => {
 };
 
 const getToolPolicy = (context: ToolContext): ToolPolicyConfig => context.toolPolicy ?? DEFAULT_TOOL_POLICY;
+
+const formatArgumentsText = (args: unknown): string => JSON.stringify(args, null, 2);
 
 const resolveExistingPath = async (targetPath: string): Promise<string> => {
   const resolved = await fs.realpath(targetPath);
@@ -121,15 +139,46 @@ const writeFileAtomically = async (targetPath: string, content: string, signal?:
   }
 };
 
+const resolvePolicyViolation = async (
+  violation: ToolPolicyViolation | null,
+  context: ToolContext,
+  toolName: string,
+  args: unknown,
+): Promise<void> => {
+  if (!violation) {
+    return;
+  }
+
+  if (context.approvalState?.grantedPolicies.has(violation.policyKey)) {
+    return;
+  }
+
+  if (violation.mode === 'block' || !context.requestApproval) {
+    throw new Error(violation.message);
+  }
+
+  const resolution = await context.requestApproval({
+    toolName,
+    argumentsText: formatArgumentsText(args),
+    violation,
+  });
+
+  if (!resolution.approved) {
+    throw new Error(`Tool approval was rejected by the user: ${violation.reason}`);
+  }
+
+  if (resolution.scope === 'request') {
+    context.approvalState?.grantedPolicies.add(violation.policyKey);
+  }
+};
+
 export const readFileTool = async (args: ReadFileArgs, context: ToolContext): Promise<string> => {
   throwIfAborted(context.signal);
   const workspaceRoot = await resolveWorkspaceRootForPolicy(context.workspaceRoot);
   const targetPath = resolveInputPath(args.path, workspaceRoot);
   const resolvedTargetPath = await resolveExistingPath(targetPath);
   const violation = getReadPolicyViolation(getToolPolicy(context), resolvedTargetPath, workspaceRoot);
-  if (violation) {
-    throw new Error(violation.message);
-  }
+  await resolvePolicyViolation(violation, context, 'read_file', args);
   const stats = await fs.stat(resolvedTargetPath);
 
   if (!stats.isFile()) {
@@ -160,9 +209,7 @@ export const writeFileTool = async (args: WriteFileArgs, context: ToolContext): 
   const targetPath = resolveInputPath(args.path, workspaceRoot);
   const policyTargetPath = await resolvePathForPolicy(targetPath);
   const violation = getWritePolicyViolation(getToolPolicy(context), policyTargetPath, workspaceRoot);
-  if (violation) {
-    throw new Error(violation.message);
-  }
+  await resolvePolicyViolation(violation, context, 'write_file', args);
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
   await writeFileAtomically(targetPath, args.content, context.signal);
   const resolvedTargetPath = await resolvePathForPolicy(targetPath);
@@ -253,9 +300,7 @@ export const executeTerminalTool = async (
   const cwd = args.cwd ? resolveInputPath(args.cwd, workspaceRoot) : workspaceRoot;
   const policyCwd = await resolvePathForPolicy(cwd);
   const violation = getTerminalPolicyViolation(getToolPolicy(context), command, policyCwd, workspaceRoot);
-  if (violation) {
-    throw new Error(violation.message);
-  }
+  await resolvePolicyViolation(violation, context, 'execute_terminal', args);
   const result = await execCommand(command, policyCwd, context.signal);
 
   return JSON.stringify(

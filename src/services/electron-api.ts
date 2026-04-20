@@ -12,6 +12,7 @@ import type {
   PersistedSessionPayload,
   PersistedSessionSummary,
   ResetChatRequest,
+  ResolveToolApprovalInput,
   StartChatRequest,
   UpdateAutomationInput,
 } from '../../shared/contracts';
@@ -53,6 +54,8 @@ export const runAutomation = (automationId: string): Promise<AutomationRunRecord
 export const startChat = (request: StartChatRequest): Promise<void> => requireDesktopApi().startChat(request);
 export const cancelChat = (request: CancelChatRequest): Promise<void> => requireDesktopApi().cancelChat(request);
 export const resetChat = (request: ResetChatRequest): Promise<void> => requireDesktopApi().resetChat(request);
+export const resolveToolApproval = (input: ResolveToolApprovalInput): Promise<void> =>
+  requireDesktopApi().resolveToolApproval(input);
 export const onChatEvent = (listener: (event: ChatStreamEvent) => void): (() => void) =>
   requireDesktopApi().onChatEvent(listener);
 export const onAutomationEvent = (listener: (event: AutomationEvent) => void): (() => void) =>

@@ -215,4 +215,93 @@ describe('tool-service', () => {
     const directoryEntries = await fs.readdir(path.dirname(targetPath));
     expect(directoryEntries.some((entry) => entry.startsWith('.codexapp-write-'))).toBe(false);
   });
+
+  it('allows a one-time approved read outside the workspace', async () => {
+    const workspaceRoot = await createWorkspace();
+    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexapp-tools-outside-'));
+    tempDirs.push(outsideDir);
+    const outsideFile = path.join(outsideDir, 'allowed.txt');
+    const requestApproval = vi.fn().mockResolvedValue({ approved: true as const, scope: 'once' as const });
+
+    await fs.writeFile(outsideFile, 'approved read', 'utf8');
+
+    const raw = await readFileTool(
+      { path: outsideFile },
+      {
+        workspaceRoot,
+        toolPolicy: DEFAULT_TOOL_POLICY,
+        approvalState: {
+          grantedPolicies: new Set(),
+        },
+        requestApproval,
+      },
+    );
+
+    expect(requestApproval).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(raw)).toMatchObject({
+      content: 'approved read',
+    });
+  });
+
+  it('reuses request-scope approval for repeated outside-workspace reads in the same run', async () => {
+    const workspaceRoot = await createWorkspace();
+    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexapp-tools-outside-'));
+    tempDirs.push(outsideDir);
+    const approvalState = {
+      grantedPolicies: new Set<keyof typeof DEFAULT_TOOL_POLICY>(),
+    };
+    const requestApproval = vi.fn().mockResolvedValue({ approved: true as const, scope: 'request' as const });
+
+    await fs.writeFile(path.join(outsideDir, 'first.txt'), 'first', 'utf8');
+    await fs.writeFile(path.join(outsideDir, 'second.txt'), 'second', 'utf8');
+
+    await readFileTool(
+      { path: path.join(outsideDir, 'first.txt') },
+      {
+        workspaceRoot,
+        toolPolicy: DEFAULT_TOOL_POLICY,
+        approvalState,
+        requestApproval,
+      },
+    );
+
+    await readFileTool(
+      { path: path.join(outsideDir, 'second.txt') },
+      {
+        workspaceRoot,
+        toolPolicy: DEFAULT_TOOL_POLICY,
+        approvalState,
+        requestApproval,
+      },
+    );
+
+    expect(requestApproval).toHaveBeenCalledTimes(1);
+    expect(approvalState.grantedPolicies.has('outsideWorkspaceReads')).toBe(true);
+  });
+
+  it('surfaces a clear error when the user rejects an approval request', async () => {
+    const workspaceRoot = await createWorkspace();
+    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexapp-tools-outside-'));
+    tempDirs.push(outsideDir);
+    const requestApproval = vi.fn().mockResolvedValue({ approved: false as const });
+
+    await expect(
+      writeFileTool(
+        {
+          path: path.join(outsideDir, 'rejected.txt'),
+          content: 'denied',
+        },
+        {
+          workspaceRoot,
+          toolPolicy: DEFAULT_TOOL_POLICY,
+          approvalState: {
+            grantedPolicies: new Set(),
+          },
+          requestApproval,
+        },
+      ),
+    ).rejects.toThrow('Tool approval was rejected by the user');
+
+    await expect(fs.access(path.join(outsideDir, 'rejected.txt'))).rejects.toThrow();
+  });
 });

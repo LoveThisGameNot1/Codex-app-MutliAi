@@ -39,6 +39,8 @@ export type MessageRole = 'user' | 'assistant' | 'tool' | 'system';
 export type MessageStatus = 'idle' | 'streaming' | 'complete' | 'error';
 export type ToolExecutionStatus = 'running' | 'completed' | 'failed';
 export type ToolAccessMode = 'allow' | 'ask' | 'block';
+export type ToolApprovalScope = 'once' | 'request';
+export type ToolApprovalDecision = 'approve' | 'reject';
 export type AutomationStatus = 'active' | 'paused';
 export type AutomationRunStatus = 'running' | 'completed' | 'failed';
 export type AutomationWeekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -84,6 +86,22 @@ export type ToolExecutionRecord = {
   finishedAt?: string;
 };
 
+export type ToolApprovalRequestRecord = {
+  id: string;
+  requestId: string;
+  toolName: string;
+  argumentsText: string;
+  reason: string;
+  requestedAt: string;
+  scopeOptions: ToolApprovalScope[];
+};
+
+export type ResolveToolApprovalInput = {
+  approvalId: string;
+  decision: ToolApprovalDecision;
+  scope?: ToolApprovalScope;
+};
+
 export type ChatMessage = {
   id: string;
   role: MessageRole;
@@ -91,6 +109,7 @@ export type ChatMessage = {
   createdAt: string;
   status: MessageStatus;
   toolExecutionId?: string;
+  toolApprovalId?: string;
 };
 
 export type ArtifactRecord = {
@@ -265,6 +284,19 @@ export type ChatStreamEvent =
       tool: ToolExecutionRecord;
     }
   | {
+      type: 'approval.requested';
+      requestId: string;
+      approval: ToolApprovalRequestRecord;
+    }
+  | {
+      type: 'approval.resolved';
+      requestId: string;
+      approvalId: string;
+      decision: ToolApprovalDecision;
+      scope?: ToolApprovalScope;
+      finishedAt: string;
+    }
+  | {
       type: 'chat.cancelled';
       requestId: string;
       finishedAt: string;
@@ -297,6 +329,7 @@ export type DesktopApi = {
   startChat: (request: StartChatRequest) => Promise<void>;
   cancelChat: (request: CancelChatRequest) => Promise<void>;
   resetChat: (request: ResetChatRequest) => Promise<void>;
+  resolveToolApproval: (input: ResolveToolApprovalInput) => Promise<void>;
   onChatEvent: (listener: (event: ChatStreamEvent) => void) => () => void;
   onAutomationEvent: (listener: (event: AutomationEvent) => void) => () => void;
 };

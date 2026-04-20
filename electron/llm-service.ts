@@ -23,7 +23,10 @@ import {
   CreateAutomationInput,
   DEFAULT_SYSTEM_PROMPT,
   ModelCatalogResult,
+  ResolveToolApprovalInput,
   StartChatRequest,
+  ToolApprovalRequestRecord,
+  ToolApprovalScope,
   ToolExecutionRecord,
   UpdateAutomationInput,
 } from '../shared/contracts';
@@ -44,10 +47,15 @@ import {
   writeFileTool,
   type WriteFileArgs,
 } from './tool-service';
+import type { ToolPolicyViolation } from './tool-policy';
 import { SessionStore } from './session-store';
 
 const nowIso = (): string => new Date().toISOString();
 const MAX_NATIVE_OUTPUT_TOKENS = 4096;
+const createId = (): string =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
 type EmitEvent = (event: ChatStreamEvent) => void;
 
@@ -62,6 +70,13 @@ type AutomationTooling = {
   updateAutomation: (input: UpdateAutomationInput) => Promise<AutomationRecord>;
   deleteAutomation: (automationId: string) => Promise<void>;
   runAutomation: (automationId: string) => Promise<AutomationRunRecord>;
+};
+
+type PendingToolApproval = {
+  requestId: string;
+  approval: ToolApprovalRequestRecord;
+  emitEvent: EmitEvent;
+  resolve: (value: { approved: boolean; scope?: ToolApprovalScope }) => void;
 };
 
 type GenericToolDefinition = {
@@ -154,6 +169,7 @@ export class LlmService {
   private readonly sessions = new Map<string, Session>();
   private readonly activeRunners = new Map<string, ReturnType<OpenAI['chat']['completions']['runTools']>>();
   private readonly activeAbortControllers = new Map<string, AbortController>();
+  private readonly pendingToolApprovals = new Map<string, PendingToolApproval>();
   private readonly initializationPromise: Promise<void>;
   private automationTooling: AutomationTooling | null = null;
 
@@ -419,11 +435,33 @@ export class LlmService {
   }
 
   public async cancelChat(requestId: string): Promise<void> {
+    this.resolvePendingApprovalsForRequest(requestId, 'reject');
     this.activeAbortControllers.get(requestId)?.abort();
     const runner = this.activeRunners.get(requestId);
     runner?.abort();
     this.activeRunners.delete(requestId);
     this.activeAbortControllers.delete(requestId);
+  }
+
+  public async resolveToolApproval(input: ResolveToolApprovalInput): Promise<void> {
+    const pending = this.pendingToolApprovals.get(input.approvalId);
+    if (!pending) {
+      return;
+    }
+
+    this.pendingToolApprovals.delete(input.approvalId);
+    pending.resolve({
+      approved: input.decision === 'approve',
+      scope: input.decision === 'approve' ? input.scope : undefined,
+    });
+    pending.emitEvent({
+      type: 'approval.resolved',
+      requestId: pending.requestId,
+      approvalId: input.approvalId,
+      decision: input.decision,
+      scope: input.scope,
+      finishedAt: nowIso(),
+    });
   }
 
   public async resetSession(sessionId: string, config: AppConfig): Promise<void> {
@@ -490,6 +528,10 @@ export class LlmService {
       workspaceRoot: this.workspaceRoot,
       signal: abortController.signal,
       toolPolicy: normalizeToolPolicy(config.toolPolicy),
+      approvalState: {
+        grantedPolicies: new Set(),
+      },
+      requestApproval: (input) => this.requestToolApproval(requestId, input, emitEvent),
     };
     const toolDefinitions = this.createToolDefinitions(requestId, context, emitEvent);
 
@@ -616,6 +658,10 @@ export class LlmService {
       workspaceRoot: this.workspaceRoot,
       signal: abortController.signal,
       toolPolicy: normalizeToolPolicy(config.toolPolicy),
+      approvalState: {
+        grantedPolicies: new Set(),
+      },
+      requestApproval: (input) => this.requestToolApproval(requestId, input, emitEvent),
     };
     const toolDefinitions = this.createToolDefinitions(requestId, context, emitEvent);
     const anthropicTools: Anthropic.Tool[] = toolDefinitions.map((tool) => ({
@@ -813,6 +859,10 @@ export class LlmService {
       workspaceRoot: this.workspaceRoot,
       signal: abortController.signal,
       toolPolicy: normalizeToolPolicy(config.toolPolicy),
+      approvalState: {
+        grantedPolicies: new Set(),
+      },
+      requestApproval: (input) => this.requestToolApproval(requestId, input, emitEvent),
     };
     const toolDefinitions = this.createToolDefinitions(requestId, context, emitEvent);
     const toolMap = new Map(toolDefinitions.map((tool) => [tool.name, tool]));
@@ -1299,5 +1349,58 @@ export class LlmService {
       messages: session.messages,
       updatedAt: nowIso(),
     });
+  }
+
+  private async requestToolApproval(
+    requestId: string,
+    input: {
+      toolName: string;
+      argumentsText: string;
+      violation: ToolPolicyViolation;
+    },
+    emitEvent: EmitEvent,
+  ): Promise<{ approved: boolean; scope?: ToolApprovalScope }> {
+    const approval: ToolApprovalRequestRecord = {
+      id: createId(),
+      requestId,
+      toolName: input.toolName,
+      argumentsText: input.argumentsText,
+      reason: input.violation.reason,
+      requestedAt: nowIso(),
+      scopeOptions: ['once', 'request'],
+    };
+
+    emitEvent({
+      type: 'approval.requested',
+      requestId,
+      approval,
+    });
+
+    return new Promise<{ approved: boolean; scope?: ToolApprovalScope }>((resolve) => {
+      this.pendingToolApprovals.set(approval.id, {
+        requestId,
+        approval,
+        emitEvent,
+        resolve,
+      });
+    });
+  }
+
+  private resolvePendingApprovalsForRequest(requestId: string, decision: 'reject'): void {
+    for (const [approvalId, pending] of this.pendingToolApprovals.entries()) {
+      if (pending.requestId !== requestId) {
+        continue;
+      }
+
+      this.pendingToolApprovals.delete(approvalId);
+      pending.resolve({ approved: false });
+      pending.emitEvent({
+        type: 'approval.resolved',
+        requestId,
+        approvalId,
+        decision,
+        finishedAt: nowIso(),
+      });
+    }
   }
 }

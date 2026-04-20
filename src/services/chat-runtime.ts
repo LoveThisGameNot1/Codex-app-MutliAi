@@ -6,6 +6,7 @@ import {
   loadSession,
   onChatEvent,
   resetChat,
+  resolveToolApproval,
   startChat,
   updateConfig,
 } from './electron-api';
@@ -137,6 +138,21 @@ class ChatRuntime {
     await this.refreshSessionLibrary();
   }
 
+  public async approveToolRequest(approvalId: string, scope: 'once' | 'request'): Promise<void> {
+    await resolveToolApproval({
+      approvalId,
+      decision: 'approve',
+      scope,
+    });
+  }
+
+  public async rejectToolRequest(approvalId: string): Promise<void> {
+    await resolveToolApproval({
+      approvalId,
+      decision: 'reject',
+    });
+  }
+
   private async handleEvent(event: ChatStreamEvent): Promise<void> {
     if (event.requestId !== this.activeRequestId) {
       return;
@@ -171,6 +187,18 @@ class ChatRuntime {
       case 'tool.completed':
       case 'tool.failed': {
         state.updateToolExecution(event.tool);
+        return;
+      }
+      case 'approval.requested': {
+        state.addPendingToolApproval(event.approval);
+        return;
+      }
+      case 'approval.resolved': {
+        state.resolvePendingToolApproval({
+          approvalId: event.approvalId,
+          decision: event.decision,
+          scope: event.scope,
+        });
         return;
       }
       case 'chat.cancelled': {
