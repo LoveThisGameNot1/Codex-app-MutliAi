@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { builtinModules, createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -6,9 +7,28 @@ import electron from 'vite-plugin-electron';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const require = createRequire(import.meta.url);
+const packageJson = require('./package.json') as {
+  dependencies?: Record<string, string>;
+};
+const electronExternalPackages = Object.keys(packageJson.dependencies ?? {});
+const electronExternalModules = new Set([
+  ...builtinModules,
+  ...builtinModules.map((moduleName) => `node:${moduleName}`),
+  ...electronExternalPackages,
+]);
+const isElectronExternal = (id: string): boolean =>
+  [...electronExternalModules].some((moduleName) => id === moduleName || id.startsWith(`${moduleName}/`));
 const electronPlugins = electron([
   {
     entry: 'electron/main.ts',
+    vite: {
+      build: {
+        rollupOptions: {
+          external: (id) => isElectronExternal(id),
+        },
+      },
+    },
   },
   {
     entry: 'electron/preload.ts',
@@ -24,6 +44,7 @@ const electronPlugins = electron([
           fileName: () => 'preload',
         },
         rollupOptions: {
+          external: (id) => isElectronExternal(id),
           output: {
             entryFileNames: '[name].mjs',
             chunkFileNames: '[name].mjs',
