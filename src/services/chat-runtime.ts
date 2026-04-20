@@ -138,7 +138,20 @@ class ChatRuntime {
     await this.refreshSessionLibrary();
   }
 
-  public async approveToolRequest(approvalId: string, scope: 'once' | 'request'): Promise<void> {
+  public async approveToolRequest(approvalId: string, scope: 'once' | 'request' | 'always'): Promise<void> {
+    if (scope === 'always') {
+      const approval = useAppStore.getState().pendingToolApprovals.find((item) => item.id === approvalId);
+      if (approval) {
+        const nextConfig = await updateConfig({
+          toolPolicy: {
+            ...useAppStore.getState().config.toolPolicy,
+            [approval.policyKey]: 'allow',
+          },
+        });
+        useAppStore.getState().hydrateConfig(nextConfig);
+      }
+    }
+
     await resolveToolApproval({
       approvalId,
       decision: 'approve',

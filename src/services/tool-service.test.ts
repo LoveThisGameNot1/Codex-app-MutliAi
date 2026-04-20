@@ -304,4 +304,47 @@ describe('tool-service', () => {
 
     await expect(fs.access(path.join(outsideDir, 'rejected.txt'))).rejects.toThrow();
   });
+
+  it('treats always-allow approvals like request-scope approvals for the current run', async () => {
+    const workspaceRoot = await createWorkspace();
+    const approvalState = {
+      grantedPolicies: new Set<keyof typeof DEFAULT_TOOL_POLICY>(),
+    };
+    const requestApproval = vi.fn().mockResolvedValue({ approved: true as const, scope: 'always' as const });
+
+    await writeFileTool(
+      {
+        path: 'notes/first.txt',
+        content: 'first',
+      },
+      {
+        workspaceRoot,
+        toolPolicy: {
+          ...DEFAULT_TOOL_POLICY,
+          writeFile: 'ask',
+        },
+        approvalState,
+        requestApproval,
+      },
+    );
+
+    await writeFileTool(
+      {
+        path: 'notes/second.txt',
+        content: 'second',
+      },
+      {
+        workspaceRoot,
+        toolPolicy: {
+          ...DEFAULT_TOOL_POLICY,
+          writeFile: 'ask',
+        },
+        approvalState,
+        requestApproval,
+      },
+    );
+
+    expect(requestApproval).toHaveBeenCalledTimes(1);
+    expect(approvalState.grantedPolicies.has('writeFile')).toBe(true);
+  });
 });

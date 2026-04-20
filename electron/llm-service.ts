@@ -37,7 +37,7 @@ import {
   isApiKeyOptionalForProvider,
   resolveBaseUrl,
 } from '../shared/provider-presets';
-import { describeToolPolicyForPrompt, normalizeToolPolicy } from '../shared/tool-policy';
+import { canPersistApprovalForPolicyKey, describeToolPolicyForPrompt, normalizeToolPolicy } from '../shared/tool-policy';
 import {
   executeTerminalTool,
   readFileTool,
@@ -1364,10 +1364,13 @@ export class LlmService {
       id: createId(),
       requestId,
       toolName: input.toolName,
+      policyKey: input.violation.policyKey,
       argumentsText: input.argumentsText,
       reason: input.violation.reason,
       requestedAt: nowIso(),
-      scopeOptions: ['once', 'request'],
+      scopeOptions: canPersistApprovalForPolicyKey(input.violation.policyKey)
+        ? ['once', 'request', 'always']
+        : ['once', 'request'],
     };
 
     emitEvent({

@@ -167,7 +167,7 @@ const resolvePolicyViolation = async (
     throw new Error(`Tool approval was rejected by the user: ${violation.reason}`);
   }
 
-  if (resolution.scope === 'request') {
+  if (resolution.scope === 'request' || resolution.scope === 'always') {
     context.approvalState?.grantedPolicies.add(violation.policyKey);
   }
 };

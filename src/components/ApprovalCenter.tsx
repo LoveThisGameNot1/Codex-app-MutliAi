@@ -1,5 +1,6 @@
 import { chatRuntime } from '@/services/chat-runtime';
 import { useAppStore } from '@/store/app-store';
+import { TOOL_POLICY_DESCRIPTIONS } from '../../shared/tool-policy';
 
 export const ApprovalCenter = () => {
   const pendingToolApprovals = useAppStore((state) => state.pendingToolApprovals);
@@ -38,6 +39,12 @@ export const ApprovalCenter = () => {
                   </span>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-amber-50">{approval.reason}</p>
+                <p className="mt-2 text-xs leading-6 text-amber-100/70">
+                  Policy: {TOOL_POLICY_DESCRIPTIONS[approval.policyKey].label}
+                  {approval.scopeOptions.includes('always')
+                    ? ' can be safely persisted for future runs.'
+                    : ' is limited to temporary approvals for safety.'}
+                </p>
                 <pre className="mt-3 overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/80 p-3 text-xs leading-6 text-slate-300">
                   {approval.argumentsText}
                 </pre>
@@ -58,6 +65,15 @@ export const ApprovalCenter = () => {
                 >
                   Approve For Run
                 </button>
+                {approval.scopeOptions.includes('always') ? (
+                  <button
+                    type="button"
+                    onClick={() => void chatRuntime.approveToolRequest(approval.id, 'always')}
+                    className="rounded-full border border-violet-300/30 bg-violet-300/10 px-4 py-2 text-sm text-violet-50 transition hover:bg-violet-300/20"
+                  >
+                    Always Allow
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => void chatRuntime.rejectToolRequest(approval.id)}

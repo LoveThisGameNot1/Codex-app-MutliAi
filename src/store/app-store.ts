@@ -308,9 +308,15 @@ export const useAppStore = create<AppState>()(
             {
               id: `${approvalId}:resolved:${decision}:${Date.now()}`,
               role: 'system',
-              content:
-                decision === 'approve'
-                  ? `Approval granted${scope === 'request' ? ' for the rest of this run' : ' once'}.\n\nThe agent can continue.`
+                content:
+                  decision === 'approve'
+                  ? `Approval granted${
+                      scope === 'request'
+                        ? ' for the rest of this run'
+                        : scope === 'always'
+                          ? ' and this rule is now permanently allowed'
+                          : ' once'
+                    }.\n\nThe agent can continue.`
                   : 'Approval rejected.\n\nThe pending tool action was denied.',
               createdAt: nowIso(),
               status: decision === 'approve' ? 'complete' : 'error',

@@ -39,7 +39,7 @@ export type MessageRole = 'user' | 'assistant' | 'tool' | 'system';
 export type MessageStatus = 'idle' | 'streaming' | 'complete' | 'error';
 export type ToolExecutionStatus = 'running' | 'completed' | 'failed';
 export type ToolAccessMode = 'allow' | 'ask' | 'block';
-export type ToolApprovalScope = 'once' | 'request';
+export type ToolApprovalScope = 'once' | 'request' | 'always';
 export type ToolApprovalDecision = 'approve' | 'reject';
 export type AutomationStatus = 'active' | 'paused';
 export type AutomationRunStatus = 'running' | 'completed' | 'failed';
@@ -90,6 +90,7 @@ export type ToolApprovalRequestRecord = {
   id: string;
   requestId: string;
   toolName: string;
+  policyKey: keyof ToolPolicyConfig;
   argumentsText: string;
   reason: string;
   requestedAt: string;

@@ -49,8 +49,17 @@ export const TOOL_POLICY_DESCRIPTIONS: Record<keyof ToolPolicyConfig, { label: s
   },
 };
 
+export const PERSISTENT_APPROVAL_SAFE_POLICY_KEYS: Array<keyof ToolPolicyConfig> = [
+  'readFile',
+  'writeFile',
+  'executeTerminal',
+];
+
 const normalizeMode = (value: unknown, fallback: ToolAccessMode): ToolAccessMode =>
   typeof value === 'string' && TOOL_ACCESS_MODES.includes(value as ToolAccessMode) ? (value as ToolAccessMode) : fallback;
+
+export const canPersistApprovalForPolicyKey = (policyKey: keyof ToolPolicyConfig): boolean =>
+  PERSISTENT_APPROVAL_SAFE_POLICY_KEYS.includes(policyKey);
 
 export const normalizeToolPolicy = (input?: Partial<ToolPolicyConfig> | null): ToolPolicyConfig => ({
   readFile: normalizeMode(input?.readFile, DEFAULT_TOOL_POLICY.readFile),
