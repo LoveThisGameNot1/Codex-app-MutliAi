@@ -72,7 +72,7 @@ export type AppState = {
   setComposerValue: (value: string) => void;
   setSettingsOpen: (open: boolean) => void;
   setWorkspaceSection: (section: WorkspaceSection) => void;
-  createTask: (title?: string) => string;
+  createTask: (input?: { title?: string; parentTaskId?: string | null; scopeSummary?: string | null }) => string;
   setActiveTaskId: (taskId: string) => void;
   setPersistedSessions: (sessions: PersistedSessionSummary[]) => void;
   setAutomations: (automations: AutomationRecord[]) => void;
@@ -87,6 +87,7 @@ export type AppState = {
     title?: string;
   }) => void;
   beginTaskRun: (input: { taskId: string; requestId: string; content: string }) => string;
+  addSystemMessage: (taskId: string, content: string, status?: MessageStatus) => void;
   appendAssistantText: (messageId: string, delta: string) => void;
   completeAssistantMessage: (messageId: string) => void;
   failAssistantMessage: (messageId: string, message: string) => void;
@@ -216,13 +217,15 @@ export const useAppStore = create<AppState>()(
             workspaceSection,
             settingsOpen: workspaceSection === 'settings',
           }),
-        createTask: (title) => {
+        createTask: (input) => {
           const taskId = createId();
           set((state) => {
             const task = createWorkspaceTask({
               id: taskId,
               workspaceSessionId: state.sessionId,
-              title,
+              title: input?.title,
+              parentTaskId: input?.parentTaskId,
+              scopeSummary: input?.scopeSummary,
             });
             const workspaceTasks = [task, ...state.workspaceTasks];
             return {
@@ -346,6 +349,20 @@ export const useAppStore = create<AppState>()(
 
           return assistantMessageId;
         },
+      addSystemMessage: (taskId, content, status = 'complete') =>
+        set((state) => ({
+          messages: [
+            ...state.messages,
+            {
+              id: createId(),
+              taskId,
+              role: 'system',
+              content,
+              createdAt: nowIso(),
+              status,
+            },
+          ],
+        })),
       appendAssistantText: (messageId, delta) =>
         set((state) => ({
           messages: state.messages.map((message) =>

@@ -33,7 +33,7 @@ Why this matters:
 - [x] Add support for multiple concurrent agent tasks inside one session.
 - [x] Give each task its own status, logs, and artifact outputs.
 - [x] Add a task switcher with progress states like queued, running, blocked, failed, completed.
-- [ ] Allow one agent to spawn sub-tasks with bounded scopes.
+- [x] Allow one agent to spawn sub-tasks with bounded scopes.
 - [ ] Persist task graphs and restore them after app restart.
 - [ ] Add tests for concurrent streams, cancellation, and state recovery.
 

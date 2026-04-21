@@ -4,6 +4,8 @@ export type WorkspaceTask = {
   id: string;
   sessionId: string;
   title: string;
+  parentTaskId: string | null;
+  scopeSummary: string | null;
   status: WorkspaceTaskStatus;
   createdAt: string;
   updatedAt: string;
@@ -26,6 +28,8 @@ export const createWorkspaceTask = (input: {
   id: string;
   workspaceSessionId: string;
   title?: string;
+  parentTaskId?: string | null;
+  scopeSummary?: string | null;
   createdAt?: string;
 }): WorkspaceTask => {
   const timestamp = input.createdAt ?? nowIso();
@@ -33,6 +37,8 @@ export const createWorkspaceTask = (input: {
     id: input.id,
     sessionId: `${input.workspaceSessionId}:task:${input.id}`,
     title: input.title?.trim() || 'New task',
+    parentTaskId: input.parentTaskId ?? null,
+    scopeSummary: input.scopeSummary?.trim() || null,
     status: 'idle',
     createdAt: timestamp,
     updatedAt: timestamp,

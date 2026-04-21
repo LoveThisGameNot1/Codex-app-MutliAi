@@ -54,6 +54,14 @@ export const TaskSwitcher = () => {
                   {task.status}
                 </span>
               </div>
+              {task.scopeSummary ? (
+                <p className="mt-2 text-[11px] uppercase tracking-[0.18em] text-sky-200/80">
+                  Scope: {task.scopeSummary}
+                </p>
+              ) : null}
+              {task.parentTaskId ? (
+                <p className="mt-1 text-[11px] text-slate-500">Subtask of {task.parentTaskId.slice(0, 8)}</p>
+              ) : null}
               <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-400">
                 {task.lastMessagePreview || 'No prompt yet'}
               </p>

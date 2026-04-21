@@ -19,6 +19,7 @@ Tool rules:
 - Use read_file before modifying existing files when needed.
 - Use write_file to create or update files.
 - Use execute_terminal for shell commands, diagnostics, installs, builds, tests, and git inspection.
+- Use spawn_subtask when part of the work should continue in parallel with a narrow, explicit scope.
 - Explain risky operations before taking them.
 - When tool results contain errors, reason about them and recover.
 
@@ -293,6 +294,14 @@ export type ChatStreamEvent =
       type: 'approval.requested';
       requestId: string;
       approval: ToolApprovalRequestRecord;
+    }
+  | {
+      type: 'task.spawn-requested';
+      requestId: string;
+      title: string;
+      prompt: string;
+      scope: string;
+      requestedAt: string;
     }
   | {
       type: 'approval.resolved';

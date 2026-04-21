@@ -30,6 +30,62 @@ class ChatRuntime {
   private unsubscribe: (() => void) | null = null;
   private readonly activeRuns = new Map<string, ActiveTaskRun>();
 
+  private async startTaskMessage(taskId: string, content: string): Promise<void> {
+    const state = useAppStore.getState();
+    const task = state.workspaceTasks.find((item) => item.id === taskId);
+    if (!task || task.requestId) {
+      return;
+    }
+
+    const requestId = createId();
+    const assistantMessageId = state.beginTaskRun({
+      taskId,
+      requestId,
+      content,
+    });
+    state.setLastError(null);
+
+    const parser = new ArtifactStreamParser({
+      onText: (text) => {
+        if (text) {
+          useAppStore.getState().appendAssistantText(assistantMessageId, text);
+        }
+      },
+      onArtifactOpen: (payload) => {
+        const artifact: ArtifactRecord = {
+          ...payload,
+          taskId,
+          content: '',
+          status: 'streaming',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          sourceMessageId: assistantMessageId,
+        };
+
+        useAppStore.getState().upsertArtifact(artifact);
+      },
+      onArtifactDelta: (artifactId, delta) => {
+        useAppStore.getState().appendArtifactContent(artifactId, delta);
+      },
+      onArtifactClose: (artifactId) => {
+        useAppStore.getState().finalizeArtifact(artifactId);
+      },
+    });
+
+    this.activeRuns.set(requestId, {
+      taskId,
+      assistantMessageId,
+      parser,
+    });
+
+    await startChat({
+      requestId,
+      sessionId: task.sessionId,
+      message: content,
+      config: state.config,
+    });
+  }
+
   public initialize(): void {
     if (this.unsubscribe) {
       return;
@@ -50,54 +106,8 @@ class ChatRuntime {
       return;
     }
 
-    const requestId = createId();
-    const assistantMessageId = state.beginTaskRun({
-      taskId: activeTask.id,
-      requestId,
-      content,
-    });
     state.setComposerValue('');
-    state.setLastError(null);
-
-    const parser = new ArtifactStreamParser({
-      onText: (text) => {
-        if (text) {
-          useAppStore.getState().appendAssistantText(assistantMessageId, text);
-        }
-      },
-      onArtifactOpen: (payload) => {
-        const artifact: ArtifactRecord = {
-          ...payload,
-          taskId: activeTask.id,
-          content: '',
-          status: 'streaming',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          sourceMessageId: assistantMessageId,
-        };
-
-        useAppStore.getState().upsertArtifact(artifact);
-      },
-      onArtifactDelta: (artifactId, delta) => {
-        useAppStore.getState().appendArtifactContent(artifactId, delta);
-      },
-      onArtifactClose: (artifactId) => {
-        useAppStore.getState().finalizeArtifact(artifactId);
-      },
-    });
-
-    this.activeRuns.set(requestId, {
-      taskId: activeTask.id,
-      assistantMessageId,
-      parser,
-    });
-
-    await startChat({
-      requestId,
-      sessionId: activeTask.sessionId,
-      message: content,
-      config: state.config,
-    });
+    await this.startTaskMessage(activeTask.id, content);
   }
 
   public async cancelActiveRequest(): Promise<void> {
@@ -121,7 +131,32 @@ class ChatRuntime {
 
   public async createTask(title?: string): Promise<void> {
     const nextTitle = title?.trim() || 'New task';
-    useAppStore.getState().createTask(nextTitle);
+    useAppStore.getState().createTask({ title: nextTitle });
+  }
+
+  public async spawnSubtask(input: {
+    parentTaskId: string;
+    title: string;
+    prompt: string;
+    scopeSummary: string;
+  }): Promise<void> {
+    const state = useAppStore.getState();
+    const parentTask = state.workspaceTasks.find((task) => task.id === input.parentTaskId);
+    if (!parentTask) {
+      return;
+    }
+
+    const taskId = state.createTask({
+      title: input.title,
+      parentTaskId: input.parentTaskId,
+      scopeSummary: input.scopeSummary,
+    });
+    state.addSystemMessage(
+      input.parentTaskId,
+      `Spawned subtask "${input.title}" with scope: ${input.scopeSummary}`,
+    );
+    state.setActiveTaskId(taskId);
+    await this.startTaskMessage(taskId, input.prompt);
   }
 
   public async resetConversation(): Promise<void> {
@@ -199,6 +234,20 @@ class ChatRuntime {
     const activeRun = this.activeRuns.get(event.requestId);
 
     switch (event.type) {
+      case 'task.spawn-requested': {
+        const parentTaskId = activeRun?.taskId;
+        if (!parentTaskId) {
+          return;
+        }
+
+        await this.spawnSubtask({
+          parentTaskId,
+          title: event.title,
+          prompt: event.prompt,
+          scopeSummary: event.scope,
+        });
+        return;
+      }
       case 'approval.requested': {
         if (activeRun) {
           state.addPendingToolApproval({ ...event.approval, taskId: activeRun.taskId }, activeRun.taskId);

@@ -14,11 +14,15 @@ describe('workspace-task helpers', () => {
       id: 'task-1',
       workspaceSessionId: 'workspace-abc',
       title: 'Background task',
+      parentTaskId: 'task-root',
+      scopeSummary: 'Only inspect src/components',
       createdAt: '2026-04-21T12:00:00.000Z',
     });
 
     expect(task.sessionId).toBe('workspace-abc:task:task-1');
     expect(task.status).toBe('idle');
+    expect(task.parentTaskId).toBe('task-root');
+    expect(task.scopeSummary).toBe('Only inspect src/components');
   });
 
   it('derives global streaming state from task statuses', () => {

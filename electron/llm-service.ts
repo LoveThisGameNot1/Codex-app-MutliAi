@@ -80,6 +80,12 @@ type GenericToolDefinition = {
   execute: (args: unknown) => Promise<string>;
 };
 
+type SpawnSubtaskArgs = {
+  title: string;
+  prompt: string;
+  scope: string;
+};
+
 const safeJson = (value: unknown): string => JSON.stringify(value, null, 2);
 
 const parseJson = <T>(input: string): T => {
@@ -1115,6 +1121,55 @@ export class LlmService {
           additionalProperties: false,
         },
         execute: (args: unknown) => runInstrumentedTool('execute_terminal', args as ExecuteTerminalArgs, executeTerminalTool),
+      },
+      {
+        name: 'spawn_subtask',
+        description:
+          'Create a bounded parallel subtask when a piece of work should continue independently from the current task. Always keep the scope explicit and narrow.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            title: {
+              type: 'string',
+              description: 'Short readable title for the child task.',
+            },
+            prompt: {
+              type: 'string',
+              description: 'Self-contained task prompt for the child agent.',
+            },
+            scope: {
+              type: 'string',
+              description: 'One-sentence boundary describing what the child task should focus on and avoid.',
+            },
+          },
+          required: ['title', 'prompt', 'scope'],
+          additionalProperties: false,
+        },
+        execute: async (args: unknown) =>
+          runInstrumentedTool('spawn_subtask', args as SpawnSubtaskArgs, async (input) => {
+            const title = input.title.trim();
+            const prompt = input.prompt.trim();
+            const scope = input.scope.trim();
+
+            if (!title || !prompt || !scope) {
+              throw new Error('spawn_subtask requires non-empty title, prompt, and scope.');
+            }
+
+            emitEvent({
+              type: 'task.spawn-requested',
+              requestId,
+              title,
+              prompt,
+              scope,
+              requestedAt: nowIso(),
+            });
+
+            return safeJson({
+              status: 'queued',
+              title,
+              scope,
+            });
+          }),
       },
     ];
 
