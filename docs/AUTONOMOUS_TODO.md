@@ -21,7 +21,8 @@ Build a local-first AI coding desktop app that combines:
 - [x] Add approve once / approve for run / always allow options where safe.
 - [x] Show pending approvals in the chat timeline and a dedicated review panel.
 - [x] Let automations pause on approval-required actions instead of only failing with a policy message.
-- [ ] Add tests for approval lifecycle, cancellation, expiry, and replay protection.
+- [x] Add tests for approval lifecycle, cancellation, expiry, and replay protection.
+- [x] Add an auto approval / unsafe option
 
 Why this matters:
 - This is the biggest remaining usability gap in the current tool-permission model.
@@ -110,6 +111,8 @@ Why this matters:
 - [ ] Add deeper provider-specific capability discovery where official APIs support it.
 - [ ] Add provider health diagnostics for auth, models, tools, and streaming.
 - [ ] Add saved provider profiles with masked keys and preferred defaults.
+- [ ] Add account-linking support where providers officially allow it, including clear sign-in flows and linked-account status in the UI.
+- [ ] Clearly distinguish consumer subscriptions like ChatGPT Plus / Claude Pro from real API access, and guide users toward supported billing or API-key setups.
 - [ ] Add explicit fallback routing when a selected model is weak for agent use.
 - [ ] Add tests for provider profile persistence and fallback selection.
 
@@ -124,6 +127,12 @@ Why this matters:
 - [ ] Improve empty states, onboarding, and first-run setup.
 - [ ] Add clearer live status surfaces for streaming, tool activity, approvals, and automations.
 - [ ] Add performance profiling and optimize any large renderer hotspots that remain.
+
+## Priority 11: GUI SETTINGS
+
+- [ ] Add a Autosacle for gui with scroll
+- [ ] Add a Big chat overlay
+
 
 Why this matters:
 - Product feel is part of the gap, not only raw features.
@@ -140,6 +149,7 @@ Why this matters:
 8. Memory and session upgrades
 9. Provider UX deepening
 10. Final polish passes
+11. Final GUI Settings
 
 ## Notes For Future Heartbeats
 

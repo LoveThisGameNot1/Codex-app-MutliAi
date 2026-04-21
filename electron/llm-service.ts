@@ -49,6 +49,7 @@ import {
 } from './tool-service';
 import type { ToolPolicyViolation } from './tool-policy';
 import { SessionStore } from './session-store';
+import { ApprovalRegistry } from './approval-registry';
 
 const nowIso = (): string => new Date().toISOString();
 const MAX_NATIVE_OUTPUT_TOKENS = 4096;
@@ -70,13 +71,6 @@ type AutomationTooling = {
   updateAutomation: (input: UpdateAutomationInput) => Promise<AutomationRecord>;
   deleteAutomation: (automationId: string) => Promise<void>;
   runAutomation: (automationId: string) => Promise<AutomationRunRecord>;
-};
-
-type PendingToolApproval = {
-  requestId: string;
-  approval: ToolApprovalRequestRecord;
-  emitEvent: EmitEvent;
-  resolve: (value: { approved: boolean; scope?: ToolApprovalScope }) => void;
 };
 
 type GenericToolDefinition = {
@@ -169,7 +163,7 @@ export class LlmService {
   private readonly sessions = new Map<string, Session>();
   private readonly activeRunners = new Map<string, ReturnType<OpenAI['chat']['completions']['runTools']>>();
   private readonly activeAbortControllers = new Map<string, AbortController>();
-  private readonly pendingToolApprovals = new Map<string, PendingToolApproval>();
+  private readonly approvalRegistry = new ApprovalRegistry();
   private readonly initializationPromise: Promise<void>;
   private automationTooling: AutomationTooling | null = null;
 
@@ -435,7 +429,8 @@ export class LlmService {
   }
 
   public async cancelChat(requestId: string): Promise<void> {
-    this.resolvePendingApprovalsForRequest(requestId, 'reject');
+    this.approvalRegistry.rejectPendingForRequest(requestId, 'cancelled');
+    this.approvalRegistry.clearRequestState(requestId);
     this.activeAbortControllers.get(requestId)?.abort();
     const runner = this.activeRunners.get(requestId);
     runner?.abort();
@@ -444,24 +439,7 @@ export class LlmService {
   }
 
   public async resolveToolApproval(input: ResolveToolApprovalInput): Promise<void> {
-    const pending = this.pendingToolApprovals.get(input.approvalId);
-    if (!pending) {
-      return;
-    }
-
-    this.pendingToolApprovals.delete(input.approvalId);
-    pending.resolve({
-      approved: input.decision === 'approve',
-      scope: input.decision === 'approve' ? input.scope : undefined,
-    });
-    pending.emitEvent({
-      type: 'approval.resolved',
-      requestId: pending.requestId,
-      approvalId: input.approvalId,
-      decision: input.decision,
-      scope: input.scope,
-      finishedAt: nowIso(),
-    });
+    this.approvalRegistry.resolve(input);
   }
 
   public async resetSession(sessionId: string, config: AppConfig): Promise<void> {
@@ -530,6 +508,7 @@ export class LlmService {
       toolPolicy: normalizeToolPolicy(config.toolPolicy),
       approvalState: {
         grantedPolicies: new Set(),
+        unsafeAutoApproveAsk: false,
       },
       requestApproval: (input) => this.requestToolApproval(requestId, input, emitEvent),
     };
@@ -616,6 +595,7 @@ export class LlmService {
         finishedAt: nowIso(),
       });
     } finally {
+      this.approvalRegistry.clearRequestState(requestId);
       this.activeRunners.delete(requestId);
       this.activeAbortControllers.delete(requestId);
     }
@@ -660,6 +640,7 @@ export class LlmService {
       toolPolicy: normalizeToolPolicy(config.toolPolicy),
       approvalState: {
         grantedPolicies: new Set(),
+        unsafeAutoApproveAsk: false,
       },
       requestApproval: (input) => this.requestToolApproval(requestId, input, emitEvent),
     };
@@ -818,6 +799,7 @@ export class LlmService {
         finishedAt: nowIso(),
       });
     } finally {
+      this.approvalRegistry.clearRequestState(requestId);
       this.activeAbortControllers.delete(requestId);
     }
   }
@@ -861,6 +843,7 @@ export class LlmService {
       toolPolicy: normalizeToolPolicy(config.toolPolicy),
       approvalState: {
         grantedPolicies: new Set(),
+        unsafeAutoApproveAsk: false,
       },
       requestApproval: (input) => this.requestToolApproval(requestId, input, emitEvent),
     };
@@ -1001,6 +984,7 @@ export class LlmService {
         finishedAt: nowIso(),
       });
     } finally {
+      this.approvalRegistry.clearRequestState(requestId);
       this.activeAbortControllers.delete(requestId);
     }
   }
@@ -1360,6 +1344,13 @@ export class LlmService {
     },
     emitEvent: EmitEvent,
   ): Promise<{ approved: boolean; scope?: ToolApprovalScope }> {
+    if (this.approvalRegistry.isUnsafeAutoApproveEnabled(requestId)) {
+      return {
+        approved: true,
+        scope: 'unsafe-run',
+      };
+    }
+
     const approval: ToolApprovalRequestRecord = {
       id: createId(),
       requestId,
@@ -1370,41 +1361,19 @@ export class LlmService {
       reason: input.violation.reason,
       requestedAt: nowIso(),
       scopeOptions: canPersistApprovalForPolicyKey(input.violation.policyKey)
-        ? ['once', 'request', 'always']
-        : ['once', 'request'],
+        ? ['once', 'request', 'always', 'unsafe-run']
+        : ['once', 'request', 'unsafe-run'],
     };
 
-    emitEvent({
-      type: 'approval.requested',
+    const resolution = await this.approvalRegistry.register({
       requestId,
       approval,
+      emitEvent,
     });
 
-    return new Promise<{ approved: boolean; scope?: ToolApprovalScope }>((resolve) => {
-      this.pendingToolApprovals.set(approval.id, {
-        requestId,
-        approval,
-        emitEvent,
-        resolve,
-      });
-    });
-  }
-
-  private resolvePendingApprovalsForRequest(requestId: string, decision: 'reject'): void {
-    for (const [approvalId, pending] of this.pendingToolApprovals.entries()) {
-      if (pending.requestId !== requestId) {
-        continue;
-      }
-
-      this.pendingToolApprovals.delete(approvalId);
-      pending.resolve({ approved: false });
-      pending.emitEvent({
-        type: 'approval.resolved',
-        requestId,
-        approvalId,
-        decision,
-        finishedAt: nowIso(),
-      });
-    }
+    return {
+      approved: resolution.approved,
+      scope: resolution.scope,
+    };
   }
 }

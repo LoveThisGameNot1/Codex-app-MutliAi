@@ -232,6 +232,7 @@ describe('tool-service', () => {
         toolPolicy: DEFAULT_TOOL_POLICY,
         approvalState: {
           grantedPolicies: new Set(),
+          unsafeAutoApproveAsk: false,
         },
         requestApproval,
       },
@@ -249,6 +250,7 @@ describe('tool-service', () => {
     tempDirs.push(outsideDir);
     const approvalState = {
       grantedPolicies: new Set<keyof typeof DEFAULT_TOOL_POLICY>(),
+      unsafeAutoApproveAsk: false,
     };
     const requestApproval = vi.fn().mockResolvedValue({ approved: true as const, scope: 'request' as const });
 
@@ -296,6 +298,7 @@ describe('tool-service', () => {
           toolPolicy: DEFAULT_TOOL_POLICY,
           approvalState: {
             grantedPolicies: new Set(),
+            unsafeAutoApproveAsk: false,
           },
           requestApproval,
         },
@@ -309,6 +312,7 @@ describe('tool-service', () => {
     const workspaceRoot = await createWorkspace();
     const approvalState = {
       grantedPolicies: new Set<keyof typeof DEFAULT_TOOL_POLICY>(),
+      unsafeAutoApproveAsk: false,
     };
     const requestApproval = vi.fn().mockResolvedValue({ approved: true as const, scope: 'always' as const });
 
@@ -346,5 +350,45 @@ describe('tool-service', () => {
 
     expect(requestApproval).toHaveBeenCalledTimes(1);
     expect(approvalState.grantedPolicies.has('writeFile')).toBe(true);
+  });
+
+  it('skips future ask-first prompts after unsafe auto-approve is enabled for the run', async () => {
+    const workspaceRoot = await createWorkspace();
+    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexapp-tools-outside-'));
+    tempDirs.push(outsideDir);
+    const approvalState = {
+      grantedPolicies: new Set<keyof typeof DEFAULT_TOOL_POLICY>(),
+      unsafeAutoApproveAsk: false,
+    };
+    const requestApproval = vi
+      .fn()
+      .mockResolvedValueOnce({ approved: true as const, scope: 'unsafe-run' as const })
+      .mockResolvedValue({ approved: true as const, scope: 'once' as const });
+
+    await fs.writeFile(path.join(outsideDir, 'first.txt'), 'first', 'utf8');
+    await fs.writeFile(path.join(outsideDir, 'second.txt'), 'second', 'utf8');
+
+    await readFileTool(
+      { path: path.join(outsideDir, 'first.txt') },
+      {
+        workspaceRoot,
+        toolPolicy: DEFAULT_TOOL_POLICY,
+        approvalState,
+        requestApproval,
+      },
+    );
+
+    await readFileTool(
+      { path: path.join(outsideDir, 'second.txt') },
+      {
+        workspaceRoot,
+        toolPolicy: DEFAULT_TOOL_POLICY,
+        approvalState,
+        requestApproval,
+      },
+    );
+
+    expect(requestApproval).toHaveBeenCalledTimes(1);
+    expect(approvalState.unsafeAutoApproveAsk).toBe(true);
   });
 });

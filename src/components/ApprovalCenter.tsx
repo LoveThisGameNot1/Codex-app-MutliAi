@@ -17,7 +17,7 @@ export const ApprovalCenter = () => {
           <h3 className="mt-2 text-xl font-semibold text-amber-50">Agent actions waiting for your decision</h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-amber-100/80">
             These tool calls hit an `ask first` policy. Approve one execution, approve the same policy for the rest of
-            the current run, or reject the action.
+            the current run, enable unsafe auto-approvals for the rest of the run, or reject the action.
           </p>
         </div>
         <span className="rounded-full border border-amber-100/20 bg-black/20 px-3 py-1 text-xs text-amber-50">
@@ -48,6 +48,10 @@ export const ApprovalCenter = () => {
                     ? ' can be safely persisted for future runs.'
                     : ' is limited to temporary approvals for safety.'}
                 </p>
+                <p className="mt-2 text-xs leading-6 text-amber-200/80">
+                  `Unsafe Auto-Approve Run` keeps this run moving by auto-approving future `ask first` tool prompts
+                  until the current request finishes. It never overrides hard `block` rules.
+                </p>
                 <pre className="mt-3 overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/80 p-3 text-xs leading-6 text-slate-300">
                   {approval.argumentsText}
                 </pre>
@@ -68,6 +72,15 @@ export const ApprovalCenter = () => {
                 >
                   Approve For Run
                 </button>
+                {approval.scopeOptions.includes('unsafe-run') ? (
+                  <button
+                    type="button"
+                    onClick={() => void chatRuntime.approveToolRequest(approval.id, 'unsafe-run')}
+                    className="rounded-full border border-amber-200/30 bg-amber-200/10 px-4 py-2 text-sm text-amber-50 transition hover:bg-amber-200/20"
+                  >
+                    Unsafe Auto-Approve Run
+                  </button>
+                ) : null}
                 {approval.scopeOptions.includes('always') ? (
                   <button
                     type="button"

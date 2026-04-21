@@ -20,6 +20,7 @@ export type ToolContext = {
   toolPolicy?: ToolPolicyConfig;
   approvalState?: {
     grantedPolicies: Set<keyof ToolPolicyConfig>;
+    unsafeAutoApproveAsk: boolean;
   };
   requestApproval?: (input: {
     toolName: string;
@@ -28,6 +29,7 @@ export type ToolContext = {
   }) => Promise<{
     approved: boolean;
     scope?: ToolApprovalScope;
+    reason?: 'approved' | 'rejected' | 'cancelled' | 'expired';
   }>;
 };
 
@@ -149,6 +151,10 @@ const resolvePolicyViolation = async (
     return;
   }
 
+  if (violation.mode === 'ask' && context.approvalState?.unsafeAutoApproveAsk) {
+    return;
+  }
+
   if (context.approvalState?.grantedPolicies.has(violation.policyKey)) {
     return;
   }
@@ -164,11 +170,23 @@ const resolvePolicyViolation = async (
   });
 
   if (!resolution.approved) {
+    if (resolution.reason === 'expired') {
+      throw new Error(`Tool approval expired before it was approved: ${violation.reason}`);
+    }
+
+    if (resolution.reason === 'cancelled') {
+      throw new Error(`Tool approval was cancelled before completion: ${violation.reason}`);
+    }
+
     throw new Error(`Tool approval was rejected by the user: ${violation.reason}`);
   }
 
   if (resolution.scope === 'request' || resolution.scope === 'always') {
     context.approvalState?.grantedPolicies.add(violation.policyKey);
+  }
+
+  if (resolution.scope === 'unsafe-run' && context.approvalState) {
+    context.approvalState.unsafeAutoApproveAsk = true;
   }
 };
 

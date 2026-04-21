@@ -336,6 +336,8 @@ export const useAppStore = create<AppState>()(
                           ? `Approval granted${
                               scope === 'request'
                                 ? ' for the rest of this run'
+                                : scope === 'unsafe-run'
+                                  ? ' and matching ask-first tools will now auto-approve for the rest of this run'
                                 : scope === 'always'
                                   ? ' and this rule is now permanently allowed'
                                   : ' once'
