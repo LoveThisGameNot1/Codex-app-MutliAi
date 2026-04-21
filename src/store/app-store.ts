@@ -8,6 +8,8 @@ import type {
   ArtifactViewMode,
   ChatMessage,
   DesktopAppInfo,
+  MessageStatus,
+  MessageRole,
   PersistedSessionSummary,
   ToolApprovalDecision,
   ToolApprovalRequestRecord,
@@ -16,6 +18,13 @@ import type {
 } from '../../shared/contracts';
 import { DEFAULT_BASE_URL, DEFAULT_MODEL, DEFAULT_PROVIDER_ID, DEFAULT_SYSTEM_PROMPT } from '../../shared/contracts';
 import { DEFAULT_TOOL_POLICY, normalizeToolPolicy } from '../../shared/tool-policy';
+import {
+  createTaskTitleFromPrompt,
+  createWorkspaceTask,
+  deriveStreamingState,
+  type WorkspaceTask,
+  type WorkspaceTaskStatus,
+} from '@/services/workspace-task';
 
 const nowIso = (): string => new Date().toISOString();
 const createId = (): string =>
@@ -28,10 +37,19 @@ const MAX_ACKNOWLEDGED_AUTOMATION_RUN_IDS = 200;
 
 export type WorkspaceSection = 'chat' | 'search' | 'plugins' | 'automations' | 'settings';
 
+const createDefaultTask = (workspaceSessionId: string): WorkspaceTask =>
+  createWorkspaceTask({
+    id: createId(),
+    workspaceSessionId,
+    title: 'Main task',
+  });
+
 export type AppState = {
   appInfo: DesktopAppInfo | null;
   config: AppConfig;
   sessionId: string;
+  workspaceTasks: WorkspaceTask[];
+  activeTaskId: string | null;
   messages: ChatMessage[];
   artifacts: ArtifactRecord[];
   activeArtifactId: string | null;
@@ -54,6 +72,8 @@ export type AppState = {
   setComposerValue: (value: string) => void;
   setSettingsOpen: (open: boolean) => void;
   setWorkspaceSection: (section: WorkspaceSection) => void;
+  createTask: (title?: string) => string;
+  setActiveTaskId: (taskId: string) => void;
   setPersistedSessions: (sessions: PersistedSessionSummary[]) => void;
   setAutomations: (automations: AutomationRecord[]) => void;
   setAutomationRuns: (runs: AutomationRunRecord[]) => void;
@@ -64,15 +84,15 @@ export type AppState = {
     messages: ChatMessage[];
     artifacts: ArtifactRecord[];
     toolExecutions: ToolExecutionRecord[];
+    title?: string;
   }) => void;
-  beginStreaming: (requestId: string) => string;
+  beginTaskRun: (input: { taskId: string; requestId: string; content: string }) => string;
   appendAssistantText: (messageId: string, delta: string) => void;
   completeAssistantMessage: (messageId: string) => void;
   failAssistantMessage: (messageId: string, message: string) => void;
-  addUserMessage: (content: string) => void;
-  addToolExecution: (tool: ToolExecutionRecord) => void;
-  updateToolExecution: (tool: ToolExecutionRecord) => void;
-  addPendingToolApproval: (approval: ToolApprovalRequestRecord) => void;
+  addToolExecution: (tool: ToolExecutionRecord, taskId: string) => void;
+  updateToolExecution: (tool: ToolExecutionRecord, taskId: string) => void;
+  addPendingToolApproval: (approval: ToolApprovalRequestRecord, taskId: string) => void;
   resolvePendingToolApproval: (input: {
     approvalId: string;
     decision: ToolApprovalDecision;
@@ -83,8 +103,8 @@ export type AppState = {
   finalizeArtifact: (artifactId: string) => void;
   setActiveArtifactId: (artifactId: string | null) => void;
   setArtifactView: (view: ArtifactViewMode) => void;
+  setTaskStatus: (taskId: string, status: WorkspaceTaskStatus, requestId?: string | null) => void;
   resetConversation: () => void;
-  setStreamingState: (isStreaming: boolean, requestId: string | null) => void;
   setLastError: (error: string | null) => void;
   markRecoveredFromPersistence: () => void;
 };
@@ -138,46 +158,88 @@ const sanitizeRecoveredTools = (tools: ToolExecutionRecord[]): ToolExecutionReco
       : tool,
   );
 
+const attachTaskId = <T extends { taskId?: string }>(items: T[], taskId: string): T[] =>
+  items.map((item) => ({
+    ...item,
+    taskId: item.taskId ?? taskId,
+  }));
+
+const updateTaskCollection = (
+  tasks: WorkspaceTask[],
+  taskId: string,
+  updater: (task: WorkspaceTask) => WorkspaceTask,
+): WorkspaceTask[] => tasks.map((task) => (task.id === taskId ? updater(task) : task));
+
 export const useAppStore = create<AppState>()(
   persist(
-    (set) => ({
-      appInfo: null,
-      config: initialConfig,
-      sessionId: createSessionId(),
-      messages: [],
-      artifacts: [],
-      activeArtifactId: null,
-      artifactView: 'code',
-      toolExecutions: [],
-      pendingToolApprovals: [],
-      persistedSessions: [],
-      automations: [],
-      automationRuns: [],
-      acknowledgedAutomationRunIds: [],
-      composerValue: '',
-      isStreaming: false,
-      activeRequestId: null,
-      settingsOpen: false,
-      workspaceSection: 'chat',
-      lastError: null,
-      setAppInfo: (appInfo) => set({ appInfo }),
-      hydrateConfig: (config) => set({ config: normalizeConfig(config) }),
-      updateConfig: (updater) =>
-        set((state) => ({
-          config: normalizeConfig(updater(normalizeConfig(state.config))),
-        })),
-      setComposerValue: (composerValue) => set({ composerValue }),
-      setSettingsOpen: (settingsOpen) =>
-        set((state) => ({
-          settingsOpen,
-          workspaceSection:
-            settingsOpen ? 'settings' : state.workspaceSection === 'settings' ? 'chat' : state.workspaceSection,
-        })),
-      setWorkspaceSection: (workspaceSection) =>
-        set({
-          workspaceSection,
-          settingsOpen: workspaceSection === 'settings',
-        }),
+    (set) => {
+      const workspaceSessionId = createSessionId();
+      const initialTask = createDefaultTask(workspaceSessionId);
+
+      return {
+        appInfo: null,
+        config: initialConfig,
+        sessionId: workspaceSessionId,
+        workspaceTasks: [initialTask],
+        activeTaskId: initialTask.id,
+        messages: [],
+        artifacts: [],
+        activeArtifactId: null,
+        artifactView: 'code',
+        toolExecutions: [],
+        pendingToolApprovals: [],
+        persistedSessions: [],
+        automations: [],
+        automationRuns: [],
+        acknowledgedAutomationRunIds: [],
+        composerValue: '',
+        isStreaming: false,
+        activeRequestId: null,
+        settingsOpen: false,
+        workspaceSection: 'chat',
+        lastError: null,
+        setAppInfo: (appInfo) => set({ appInfo }),
+        hydrateConfig: (config) => set({ config: normalizeConfig(config) }),
+        updateConfig: (updater) =>
+          set((state) => ({
+            config: normalizeConfig(updater(normalizeConfig(state.config))),
+          })),
+        setComposerValue: (composerValue) => set({ composerValue }),
+        setSettingsOpen: (settingsOpen) =>
+          set((state) => ({
+            settingsOpen,
+            workspaceSection:
+              settingsOpen ? 'settings' : state.workspaceSection === 'settings' ? 'chat' : state.workspaceSection,
+          })),
+        setWorkspaceSection: (workspaceSection) =>
+          set({
+            workspaceSection,
+            settingsOpen: workspaceSection === 'settings',
+          }),
+        createTask: (title) => {
+          const taskId = createId();
+          set((state) => {
+            const task = createWorkspaceTask({
+              id: taskId,
+              workspaceSessionId: state.sessionId,
+              title,
+            });
+            const workspaceTasks = [task, ...state.workspaceTasks];
+            return {
+              workspaceTasks,
+              activeTaskId: task.id,
+              activeArtifactId: null,
+              ...deriveStreamingState(workspaceTasks, task.id),
+            };
+          });
+          return taskId;
+        },
+        setActiveTaskId: (activeTaskId) =>
+          set((state) => ({
+            activeTaskId,
+            activeArtifactId: state.artifacts.find((artifact) => artifact.taskId === activeTaskId)?.id ?? null,
+            activeRequestId: state.workspaceTasks.find((task) => task.id === activeTaskId)?.requestId ?? null,
+          })),
       setPersistedSessions: (persistedSessions) => set({ persistedSessions }),
       setAutomations: (automations) => set({ automations }),
       setAutomationRuns: (automationRuns) =>
@@ -201,41 +263,89 @@ export const useAppStore = create<AppState>()(
             .filter((id, index, values) => values.indexOf(id) === index)
             .slice(0, MAX_ACKNOWLEDGED_AUTOMATION_RUN_IDS),
         })),
-      loadPersistedConversation: ({ sessionId, messages, artifacts, toolExecutions }) =>
-        set((state) => ({
-          sessionId,
-          messages,
-          artifacts,
-          toolExecutions,
-          pendingToolApprovals: [],
-          activeArtifactId: artifacts[0]?.id ?? null,
-          artifactView: artifacts.length > 0 ? state.artifactView : 'code',
-          composerValue: '',
-          isStreaming: false,
-          activeRequestId: null,
-          lastError: null,
-          workspaceSection: 'chat',
-        })),
-      beginStreaming: (requestId) => {
-        const assistantMessageId = createId();
-        set((state) => ({
-          isStreaming: true,
-          activeRequestId: requestId,
-          lastError: null,
-          messages: [
-            ...state.messages,
-            {
+        loadPersistedConversation: ({ sessionId, messages, artifacts, toolExecutions, title }) =>
+          set((state) => {
+            const task = createWorkspaceTask({
+              id: createId(),
+              workspaceSessionId: sessionId,
+              title: title || 'Loaded task',
+            });
+            const normalizedMessages = attachTaskId(messages, task.id);
+            const normalizedArtifacts = attachTaskId(artifacts, task.id);
+            const normalizedTools = attachTaskId(toolExecutions, task.id);
+            return {
+              sessionId,
+              workspaceTasks: [
+                {
+                  ...task,
+                  title: title || task.title,
+                  lastMessagePreview:
+                    normalizedMessages
+                      .filter((message) => message.role === 'user')
+                      .at(-1)
+                      ?.content.slice(0, 120) ?? '',
+                },
+              ],
+              activeTaskId: task.id,
+              messages: normalizedMessages,
+              artifacts: normalizedArtifacts,
+              toolExecutions: normalizedTools,
+              pendingToolApprovals: [],
+              activeArtifactId: normalizedArtifacts[0]?.id ?? null,
+              artifactView: normalizedArtifacts.length > 0 ? state.artifactView : 'code',
+              composerValue: '',
+              isStreaming: false,
+              activeRequestId: null,
+              lastError: null,
+              workspaceSection: 'chat',
+            };
+          }),
+        beginTaskRun: ({ taskId, requestId, content }) => {
+          const assistantMessageId = createId();
+          set((state) => {
+            const createdAt = nowIso();
+            const userMessage: ChatMessage = {
+              id: createId(),
+              taskId,
+              role: 'user' as MessageRole,
+              content,
+              createdAt,
+              status: 'complete' as MessageStatus,
+            };
+            const assistantMessage: ChatMessage = {
               id: assistantMessageId,
-              role: 'assistant',
+              taskId,
+              role: 'assistant' as MessageRole,
               content: '',
-              createdAt: nowIso(),
-              status: 'streaming',
-            },
-          ],
-        }));
+              createdAt,
+              status: 'streaming' as MessageStatus,
+            };
+            const nextMessages = [
+              ...state.messages,
+              userMessage,
+              assistantMessage,
+            ];
+            const workspaceTasks = updateTaskCollection(state.workspaceTasks, taskId, (task) => ({
+              ...task,
+              title: task.title === 'New task' || task.title === 'Main task' ? createTaskTitleFromPrompt(content) : task.title,
+              status: 'queued',
+              updatedAt: createdAt,
+              lastMessagePreview: content,
+              requestId,
+            }));
 
-        return assistantMessageId;
-      },
+            return {
+              messages: nextMessages,
+              workspaceTasks,
+              activeTaskId: taskId,
+              activeArtifactId: state.artifacts.find((artifact) => artifact.taskId === taskId)?.id ?? null,
+              lastError: null,
+              ...deriveStreamingState(workspaceTasks, taskId),
+            };
+          });
+
+          return assistantMessageId;
+        },
       appendAssistantText: (messageId, delta) =>
         set((state) => ({
           messages: state.messages.map((message) =>
@@ -256,72 +366,88 @@ export const useAppStore = create<AppState>()(
               : item,
           ),
         })),
-      addUserMessage: (content) =>
-        set((state) => ({
-          composerValue: '',
-          messages: [
-            ...state.messages,
-            {
-              id: createId(),
-              role: 'user',
-              content,
-              createdAt: nowIso(),
-              status: 'complete',
-            },
-          ],
-        })),
-      addToolExecution: (tool) =>
-        set((state) => ({
-          toolExecutions: [tool, ...state.toolExecutions],
-          messages: [
-            ...state.messages,
-            {
-              id: `${tool.id}:message`,
-              role: 'tool',
-              content: `Running ${tool.name}`,
-              createdAt: tool.startedAt,
-              status: 'streaming',
-              toolExecutionId: tool.id,
-            },
-          ],
-        })),
-      updateToolExecution: (tool) =>
-        set((state) => ({
-          toolExecutions: state.toolExecutions.map((item) => (item.id === tool.id ? tool : item)),
-          messages: state.messages.map((message) =>
-            message.toolExecutionId === tool.id
-              ? {
-                  ...message,
-                  content:
-                    tool.status === 'failed'
-                      ? `${tool.name} failed\n\n${tool.output || ''}`
-                      : `${tool.name} completed\n\n${tool.output || ''}`,
-                  status: tool.status === 'failed' ? 'error' : 'complete',
-                }
-              : message,
-          ),
-        })),
-      addPendingToolApproval: (approval) =>
-        set((state) => ({
-          pendingToolApprovals: [approval, ...state.pendingToolApprovals.filter((item) => item.id !== approval.id)],
-          messages:
-            approval.source === 'chat'
-              ? [
-                  ...state.messages,
-                  {
-                    id: `${approval.id}:approval`,
-                    role: 'system',
-                    content: `Approval needed for ${approval.toolName}\n\n${approval.reason}`,
-                    createdAt: approval.requestedAt,
-                    status: 'complete',
-                    toolApprovalId: approval.id,
-                  },
-                ]
-              : state.messages,
-        })),
+        addToolExecution: (tool, taskId) =>
+          set((state) => {
+            const nextTool = { ...tool, taskId };
+            const workspaceTasks = updateTaskCollection(state.workspaceTasks, taskId, (task) => ({
+              ...task,
+              status: 'running',
+              updatedAt: nowIso(),
+            }));
+            return {
+              toolExecutions: [nextTool, ...state.toolExecutions],
+              messages: [
+                ...state.messages,
+                {
+                  id: `${tool.id}:message`,
+                  taskId,
+                  role: 'tool',
+                  content: `Running ${tool.name}`,
+                  createdAt: tool.startedAt,
+                  status: 'streaming',
+                  toolExecutionId: tool.id,
+                },
+              ],
+              workspaceTasks,
+              ...deriveStreamingState(workspaceTasks, state.activeTaskId),
+            };
+          }),
+        updateToolExecution: (tool, taskId) =>
+          set((state) => ({
+            toolExecutions: state.toolExecutions.map((item) => (item.id === tool.id ? { ...tool, taskId } : item)),
+            messages: state.messages.map((message) =>
+              message.toolExecutionId === tool.id
+                ? {
+                    ...message,
+                    content:
+                      tool.status === 'failed'
+                        ? `${tool.name} failed\n\n${tool.output || ''}`
+                        : `${tool.name} completed\n\n${tool.output || ''}`,
+                    status: tool.status === 'failed' ? 'error' : 'complete',
+                  }
+                : message,
+            ),
+          })),
+        addPendingToolApproval: (approval, taskId) =>
+          set((state) => {
+            const nextApproval = { ...approval, taskId };
+            const workspaceTasks = updateTaskCollection(state.workspaceTasks, taskId, (task) => ({
+              ...task,
+              status: 'blocked',
+              updatedAt: nowIso(),
+            }));
+            return {
+              pendingToolApprovals: [nextApproval, ...state.pendingToolApprovals.filter((item) => item.id !== approval.id)],
+              messages:
+                approval.source === 'chat'
+                  ? [
+                      ...state.messages,
+                      {
+                        id: `${approval.id}:approval`,
+                        taskId,
+                        role: 'system',
+                        content: `Approval needed for ${approval.toolName}\n\n${approval.reason}`,
+                        createdAt: approval.requestedAt,
+                        status: 'complete',
+                        toolApprovalId: approval.id,
+                      },
+                    ]
+                  : state.messages,
+              workspaceTasks,
+              ...deriveStreamingState(workspaceTasks, state.activeTaskId),
+            };
+          }),
       resolvePendingToolApproval: ({ approvalId, decision, scope }) =>
         set((state) => {
           const resolvedApproval = state.pendingToolApprovals.find((approval) => approval.id === approvalId);
+          const workspaceTasks =
+            resolvedApproval?.taskId
+              ? updateTaskCollection(state.workspaceTasks, resolvedApproval.taskId, (task) => ({
+                  ...task,
+                  status: decision === 'approve' ? 'running' : 'failed',
+                  updatedAt: nowIso(),
+                }))
+              : state.workspaceTasks;
           return {
             pendingToolApprovals: state.pendingToolApprovals.filter((approval) => approval.id !== approvalId),
             messages:
@@ -330,6 +456,7 @@ export const useAppStore = create<AppState>()(
                     ...state.messages,
                     {
                       id: `${approvalId}:resolved:${decision}:${Date.now()}`,
+                      taskId: resolvedApproval.taskId,
                       role: 'system',
                       content:
                         decision === 'approve'
@@ -349,9 +476,11 @@ export const useAppStore = create<AppState>()(
                     },
                   ]
                 : state.messages,
+            workspaceTasks,
+            ...deriveStreamingState(workspaceTasks, state.activeTaskId),
           };
         }),
-      upsertArtifact: (artifact) =>
+        upsertArtifact: (artifact) =>
         set((state) => {
           const existing = state.artifacts.find((item) => item.id === artifact.id);
           return {
@@ -361,7 +490,7 @@ export const useAppStore = create<AppState>()(
             activeArtifactId: artifact.id,
           };
         }),
-      appendArtifactContent: (artifactId, delta) =>
+        appendArtifactContent: (artifactId, delta) =>
         set((state) => ({
           artifacts: state.artifacts.map((artifact) =>
             artifact.id === artifactId
@@ -373,7 +502,7 @@ export const useAppStore = create<AppState>()(
               : artifact,
           ),
         })),
-      finalizeArtifact: (artifactId) =>
+        finalizeArtifact: (artifactId) =>
         set((state) => ({
           artifacts: state.artifacts.map((artifact) =>
             artifact.id === artifactId
@@ -381,39 +510,84 @@ export const useAppStore = create<AppState>()(
               : artifact,
           ),
         })),
-      setActiveArtifactId: (activeArtifactId) => set({ activeArtifactId }),
-      setArtifactView: (artifactView) => set({ artifactView }),
-      resetConversation: () =>
-        set((state) => ({
-          sessionId: createSessionId(),
-          messages: [],
-          artifacts: [],
-          activeArtifactId: null,
-          toolExecutions: [],
-          pendingToolApprovals: [],
-          composerValue: '',
-          isStreaming: false,
-          activeRequestId: null,
-          lastError: null,
-          artifactView: state.artifactView,
-        })),
-      setStreamingState: (isStreaming, activeRequestId) => set({ isStreaming, activeRequestId }),
-      setLastError: (lastError) => set({ lastError }),
-      markRecoveredFromPersistence: () =>
-        set((state) => ({
-          isStreaming: false,
-          activeRequestId: null,
-          pendingToolApprovals: [],
-          messages: sanitizeRecoveredMessages(state.messages),
-          artifacts: sanitizeRecoveredArtifacts(state.artifacts),
-          toolExecutions: sanitizeRecoveredTools(state.toolExecutions),
-        })),
-    }),
+        setActiveArtifactId: (activeArtifactId) => set({ activeArtifactId }),
+        setArtifactView: (artifactView) => set({ artifactView }),
+        setTaskStatus: (taskId, status, requestId = null) =>
+          set((state) => {
+            const workspaceTasks = updateTaskCollection(state.workspaceTasks, taskId, (task) => ({
+              ...task,
+              status,
+              updatedAt: nowIso(),
+              requestId,
+            }));
+            return {
+              workspaceTasks,
+              ...deriveStreamingState(workspaceTasks, state.activeTaskId),
+            };
+          }),
+        resetConversation: () =>
+          set((state) => {
+            const nextSessionId = createSessionId();
+            const nextTask = createDefaultTask(nextSessionId);
+            return {
+              sessionId: nextSessionId,
+              workspaceTasks: [nextTask],
+              activeTaskId: nextTask.id,
+              messages: [],
+              artifacts: [],
+              activeArtifactId: null,
+              toolExecutions: [],
+              pendingToolApprovals: [],
+              composerValue: '',
+              isStreaming: false,
+              activeRequestId: null,
+              lastError: null,
+              artifactView: state.artifactView,
+            };
+          }),
+        setLastError: (lastError) => set({ lastError }),
+        markRecoveredFromPersistence: () =>
+          set((state) => {
+            const workspaceTasks =
+              state.workspaceTasks.length > 0
+                ? state.workspaceTasks
+                : [createDefaultTask(state.sessionId)];
+            const fallbackTaskId = state.activeTaskId ?? workspaceTasks[0]?.id ?? null;
+            const normalizedMessages = fallbackTaskId ? attachTaskId(sanitizeRecoveredMessages(state.messages), fallbackTaskId) : state.messages;
+            const normalizedArtifacts = fallbackTaskId ? attachTaskId(sanitizeRecoveredArtifacts(state.artifacts), fallbackTaskId) : state.artifacts;
+            const normalizedTools = fallbackTaskId ? attachTaskId(sanitizeRecoveredTools(state.toolExecutions), fallbackTaskId) : state.toolExecutions;
+            const nextTasks = workspaceTasks.map((task, index) =>
+              index === 0 && !task.lastMessagePreview && normalizedMessages.length > 0
+                ? {
+                    ...task,
+                    lastMessagePreview:
+                      normalizedMessages
+                        .filter((message) => message.taskId === task.id && message.role === 'user')
+                        .at(-1)
+                        ?.content.slice(0, 120) ?? '',
+                  }
+                : task,
+            );
+            return {
+              workspaceTasks: nextTasks,
+              activeTaskId: fallbackTaskId,
+              isStreaming: false,
+              activeRequestId: nextTasks.find((task) => task.id === fallbackTaskId)?.requestId ?? null,
+              pendingToolApprovals: [],
+              messages: normalizedMessages,
+              artifacts: normalizedArtifacts,
+              toolExecutions: normalizedTools,
+            };
+          }),
+      };
+    },
     {
       name: 'codexapp-state',
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         sessionId: state.sessionId,
+        workspaceTasks: state.workspaceTasks,
+        activeTaskId: state.activeTaskId,
         messages: state.messages,
         artifacts: state.artifacts,
         activeArtifactId: state.activeArtifactId,

@@ -13,17 +13,22 @@ import {
 import { ArtifactStreamParser } from './artifact-stream-parser';
 import { hydratePersistedSession } from './session-hydrator';
 import { useAppStore } from '@/store/app-store';
+import { createTaskTitleFromPrompt } from '@/services/workspace-task';
 
 const createId = (): string =>
   typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
+type ActiveTaskRun = {
+  taskId: string;
+  assistantMessageId: string;
+  parser: ArtifactStreamParser;
+};
+
 class ChatRuntime {
   private unsubscribe: (() => void) | null = null;
-  private activeRequestId: string | null = null;
-  private assistantMessageId: string | null = null;
-  private parser: ArtifactStreamParser | null = null;
+  private readonly activeRuns = new Map<string, ActiveTaskRun>();
 
   public initialize(): void {
     if (this.unsubscribe) {
@@ -40,31 +45,35 @@ class ChatRuntime {
   public async sendCurrentComposerMessage(): Promise<void> {
     const state = useAppStore.getState();
     const content = state.composerValue.trim();
-    if (!content || state.isStreaming) {
+    const activeTask = state.workspaceTasks.find((task) => task.id === state.activeTaskId);
+    if (!content || !activeTask || activeTask.requestId) {
       return;
     }
 
     const requestId = createId();
-    state.addUserMessage(content);
-    const assistantMessageId = useAppStore.getState().beginStreaming(requestId);
+    const assistantMessageId = state.beginTaskRun({
+      taskId: activeTask.id,
+      requestId,
+      content,
+    });
+    state.setComposerValue('');
     state.setLastError(null);
 
-    this.activeRequestId = requestId;
-    this.assistantMessageId = assistantMessageId;
-    this.parser = new ArtifactStreamParser({
+    const parser = new ArtifactStreamParser({
       onText: (text) => {
-        if (this.assistantMessageId && text) {
-          useAppStore.getState().appendAssistantText(this.assistantMessageId, text);
+        if (text) {
+          useAppStore.getState().appendAssistantText(assistantMessageId, text);
         }
       },
       onArtifactOpen: (payload) => {
         const artifact: ArtifactRecord = {
           ...payload,
+          taskId: activeTask.id,
           content: '',
           status: 'streaming',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          sourceMessageId: this.assistantMessageId ?? createId(),
+          sourceMessageId: assistantMessageId,
         };
 
         useAppStore.getState().upsertArtifact(artifact);
@@ -77,30 +86,49 @@ class ChatRuntime {
       },
     });
 
+    this.activeRuns.set(requestId, {
+      taskId: activeTask.id,
+      assistantMessageId,
+      parser,
+    });
+
     await startChat({
       requestId,
-      sessionId: state.sessionId,
+      sessionId: activeTask.sessionId,
       message: content,
       config: state.config,
     });
   }
 
   public async cancelActiveRequest(): Promise<void> {
-    const requestId = useAppStore.getState().activeRequestId;
-    if (!requestId) {
+    const state = useAppStore.getState();
+    const activeTask = state.workspaceTasks.find((task) => task.id === state.activeTaskId);
+    if (!activeTask?.requestId) {
       return;
     }
 
-    await cancelChat({ requestId });
+    await cancelChat({ requestId: activeTask.requestId });
+  }
+
+  public async cancelTask(taskId: string): Promise<void> {
+    const task = useAppStore.getState().workspaceTasks.find((item) => item.id === taskId);
+    if (!task?.requestId) {
+      return;
+    }
+
+    await cancelChat({ requestId: task.requestId });
+  }
+
+  public async createTask(title?: string): Promise<void> {
+    const nextTitle = title?.trim() || 'New task';
+    useAppStore.getState().createTask(nextTitle);
   }
 
   public async resetConversation(): Promise<void> {
     const state = useAppStore.getState();
-    await resetChat({ sessionId: state.sessionId });
+    await Promise.all(state.workspaceTasks.map((task) => resetChat({ sessionId: task.sessionId })));
     state.resetConversation();
-    this.activeRequestId = null;
-    this.assistantMessageId = null;
-    this.parser = null;
+    this.activeRuns.clear();
   }
 
   public async persistConfig(): Promise<void> {
@@ -121,8 +149,12 @@ class ChatRuntime {
     }
 
     const hydrated = hydratePersistedSession(session);
+    const lastUserMessage = [...hydrated.messages].reverse().find((message) => message.role === 'user');
+    const title = lastUserMessage?.content.slice(0, 48) || createTaskTitleFromPrompt(session.prompt);
+
     useAppStore.getState().loadPersistedConversation({
-      sessionId: session.id,
+      sessionId: createId(),
+      title,
       messages: hydrated.messages,
       artifacts: hydrated.artifacts,
       toolExecutions: hydrated.toolExecutions,
@@ -131,10 +163,6 @@ class ChatRuntime {
 
   public async deletePersistedSession(sessionId: string): Promise<void> {
     await deleteSession(sessionId);
-    const state = useAppStore.getState();
-    if (state.sessionId === sessionId) {
-      state.resetConversation();
-    }
     await this.refreshSessionLibrary();
   }
 
@@ -168,10 +196,13 @@ class ChatRuntime {
 
   private async handleEvent(event: ChatStreamEvent): Promise<void> {
     const state = useAppStore.getState();
+    const activeRun = this.activeRuns.get(event.requestId);
 
     switch (event.type) {
       case 'approval.requested': {
-        state.addPendingToolApproval(event.approval);
+        if (activeRun) {
+          state.addPendingToolApproval({ ...event.approval, taskId: activeRun.taskId }, activeRun.taskId);
+        }
         return;
       }
       case 'approval.resolved': {
@@ -186,60 +217,48 @@ class ChatRuntime {
         break;
     }
 
-    if (event.requestId !== this.activeRequestId) {
+    if (!activeRun) {
       return;
     }
 
     switch (event.type) {
       case 'chat.started': {
-        state.setStreamingState(true, event.requestId);
+        state.setTaskStatus(activeRun.taskId, 'running', event.requestId);
         return;
       }
       case 'assistant.delta': {
-        this.parser?.push(event.delta);
+        activeRun.parser.push(event.delta);
         return;
       }
       case 'assistant.completed': {
-        this.parser?.finish();
-        if (this.assistantMessageId) {
-          state.completeAssistantMessage(this.assistantMessageId);
-        }
-        state.setStreamingState(false, null);
-        this.activeRequestId = null;
-        this.assistantMessageId = null;
-        this.parser = null;
+        activeRun.parser.finish();
+        state.completeAssistantMessage(activeRun.assistantMessageId);
+        state.setTaskStatus(activeRun.taskId, 'completed', null);
+        this.activeRuns.delete(event.requestId);
         return;
       }
       case 'tool.started': {
-        state.addToolExecution(event.tool);
+        state.addToolExecution({ ...event.tool, taskId: activeRun.taskId }, activeRun.taskId);
         return;
       }
       case 'tool.completed':
       case 'tool.failed': {
-        state.updateToolExecution(event.tool);
+        state.updateToolExecution({ ...event.tool, taskId: activeRun.taskId }, activeRun.taskId);
         return;
       }
       case 'chat.cancelled': {
-        this.parser?.finish();
-        if (this.assistantMessageId) {
-          state.completeAssistantMessage(this.assistantMessageId);
-        }
-        state.setStreamingState(false, null);
-        this.activeRequestId = null;
-        this.assistantMessageId = null;
-        this.parser = null;
+        activeRun.parser.finish();
+        state.completeAssistantMessage(activeRun.assistantMessageId);
+        state.setTaskStatus(activeRun.taskId, 'failed', null);
+        this.activeRuns.delete(event.requestId);
         return;
       }
       case 'chat.error': {
-        this.parser?.finish();
-        if (this.assistantMessageId) {
-          state.failAssistantMessage(this.assistantMessageId, event.message);
-        }
+        activeRun.parser.finish();
+        state.failAssistantMessage(activeRun.assistantMessageId, event.message);
         state.setLastError(event.message);
-        state.setStreamingState(false, null);
-        this.activeRequestId = null;
-        this.assistantMessageId = null;
-        this.parser = null;
+        state.setTaskStatus(activeRun.taskId, 'failed', null);
+        this.activeRuns.delete(event.requestId);
         return;
       }
       default: {

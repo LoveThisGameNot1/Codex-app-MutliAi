@@ -78,6 +78,7 @@ export type ToolPolicyConfig = {
 
 export type ToolExecutionRecord = {
   id: string;
+  taskId?: string;
   name: string;
   argumentsText: string;
   output?: string;
@@ -89,6 +90,7 @@ export type ToolExecutionRecord = {
 export type ToolApprovalRequestRecord = {
   id: string;
   requestId: string;
+  taskId?: string;
   source: 'chat' | 'automation';
   toolName: string;
   policyKey: keyof ToolPolicyConfig;
@@ -106,6 +108,7 @@ export type ResolveToolApprovalInput = {
 
 export type ChatMessage = {
   id: string;
+  taskId?: string;
   role: MessageRole;
   content: string;
   createdAt: string;
@@ -116,6 +119,7 @@ export type ChatMessage = {
 
 export type ArtifactRecord = {
   id: string;
+  taskId?: string;
   type: ArtifactKind;
   title: string;
   language: string;

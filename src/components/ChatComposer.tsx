@@ -6,9 +6,11 @@ import { chatRuntime } from '@/services/chat-runtime';
 export const ChatComposer = () => {
   const composerValue = useAppStore((state) => state.composerValue);
   const setComposerValue = useAppStore((state) => state.setComposerValue);
-  const isStreaming = useAppStore((state) => state.isStreaming);
-  const activeRequestId = useAppStore((state) => state.activeRequestId);
   const config = useAppStore((state) => state.config);
+  const workspaceTasks = useAppStore((state) => state.workspaceTasks);
+  const activeTaskId = useAppStore((state) => state.activeTaskId);
+  const activeTask = workspaceTasks.find((task) => task.id === activeTaskId) ?? null;
+  const taskBusy = Boolean(activeTask?.requestId);
 
   const placeholder = useMemo(
     () =>
@@ -67,7 +69,9 @@ export const ChatComposer = () => {
         onKeyDown={(event) => {
           if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
-            void chatRuntime.sendCurrentComposerMessage();
+            if (!taskBusy) {
+              void chatRuntime.sendCurrentComposerMessage();
+            }
           }
         }}
         rows={5}
@@ -97,12 +101,19 @@ export const ChatComposer = () => {
         <div className="flex gap-3">
           <button
             type="button"
+            onClick={() => void chatRuntime.createTask()}
+            className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300 transition hover:border-white/20 hover:bg-white/10"
+          >
+            New Task
+          </button>
+          <button
+            type="button"
             onClick={() => void chatRuntime.resetConversation()}
             className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300 transition hover:border-white/20 hover:bg-white/10"
           >
             New Session
           </button>
-          {isStreaming && activeRequestId ? (
+          {taskBusy ? (
             <button
               type="button"
               onClick={() => void chatRuntime.cancelActiveRequest()}
@@ -114,6 +125,7 @@ export const ChatComposer = () => {
             <button
               type="button"
               onClick={() => void chatRuntime.sendCurrentComposerMessage()}
+              disabled={taskBusy}
               className="rounded-full border border-sky-400/30 bg-sky-400/15 px-5 py-2 text-sm font-medium text-sky-100 transition hover:bg-sky-400/25"
             >
               Send Prompt

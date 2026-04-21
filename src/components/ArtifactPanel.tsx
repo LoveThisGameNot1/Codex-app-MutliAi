@@ -17,11 +17,12 @@ const languageMap: Record<string, string> = {
 };
 
 export const ArtifactPanel = () => {
-  const artifacts = useAppStore((state) => state.artifacts);
+  const artifacts = useAppStore((state) => state.artifacts.filter((artifact) => artifact.taskId === state.activeTaskId));
   const activeArtifactId = useAppStore((state) => state.activeArtifactId);
   const setActiveArtifactId = useAppStore((state) => state.setActiveArtifactId);
   const artifactView = useAppStore((state) => state.artifactView);
   const setArtifactView = useAppStore((state) => state.setArtifactView);
+  const activeTask = useAppStore((state) => state.workspaceTasks.find((task) => task.id === state.activeTaskId) ?? null);
 
   const activeArtifact = artifacts.find((artifact) => artifact.id === activeArtifactId) ?? artifacts[0] ?? null;
   const previewEnabled = canPreviewArtifact(activeArtifact);
@@ -33,7 +34,7 @@ export const ArtifactPanel = () => {
           <p className="text-xs uppercase tracking-[0.3em] text-emerald-300/80">Artifact Studio</p>
           <h2 className="mt-2 text-2xl font-semibold text-white">Interactive Output Surface</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            Parsed artifacts are streamed here in parallel to the chat. Use code view for inspection and preview mode for HTML or React artifacts.
+            Parsed artifacts for {activeTask ? `"${activeTask.title}"` : 'the current task'} are streamed here in parallel to the chat. Use code view for inspection and preview mode for HTML or React artifacts.
           </p>
         </div>
 

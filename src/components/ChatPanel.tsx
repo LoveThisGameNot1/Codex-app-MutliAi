@@ -7,6 +7,7 @@ import { MarkdownMessage } from '@/components/MarkdownMessage';
 import { PluginsPanel } from '@/components/PluginsPanel';
 import { SearchPanel } from '@/components/SearchPanel';
 import { SettingsPanel } from '@/components/SettingsPanel';
+import { TaskSwitcher } from '@/components/TaskSwitcher';
 import { countUnreadAutomationRuns } from '@/services/automation-inbox';
 import { useAppStore } from '@/store/app-store';
 import { cn } from '@/utils/cn';
@@ -59,8 +60,12 @@ const sectionMeta = {
 } as const;
 
 export const ChatPanel = () => {
-  const messages = useAppStore((state) => state.messages);
-  const toolExecutions = useAppStore((state) => state.toolExecutions);
+  const activeTaskId = useAppStore((state) => state.activeTaskId);
+  const workspaceTasks = useAppStore((state) => state.workspaceTasks);
+  const messages = useAppStore((state) => state.messages.filter((message) => message.taskId === state.activeTaskId));
+  const toolExecutions = useAppStore((state) =>
+    state.toolExecutions.filter((tool) => tool.taskId === state.activeTaskId),
+  );
   const lastError = useAppStore((state) => state.lastError);
   const isStreaming = useAppStore((state) => state.isStreaming);
   const workspaceSection = useAppStore((state) => state.workspaceSection);
@@ -68,6 +73,7 @@ export const ChatPanel = () => {
   const acknowledgedAutomationRunIds = useAppStore((state) => state.acknowledgedAutomationRunIds);
   const pendingToolApprovals = useAppStore((state) => state.pendingToolApprovals);
   const timelineRef = useRef<HTMLDivElement | null>(null);
+  const activeTask = workspaceTasks.find((task) => task.id === activeTaskId) ?? null;
 
   useEffect(() => {
     if (workspaceSection !== 'chat') {
@@ -101,6 +107,7 @@ export const ChatPanel = () => {
     <>
       <ApprovalCenter />
       <AutomationInbox />
+      <TaskSwitcher />
 
       <div
         ref={timelineRef}
@@ -111,7 +118,7 @@ export const ChatPanel = () => {
             <div className="max-w-md">
               <p className="text-sm uppercase tracking-[0.3em] text-slate-500">Ready</p>
               <p className="mt-4 text-lg font-medium text-slate-200">
-                Ask for code generation, file edits, terminal execution, or a self-contained UI artifact.
+                {activeTask ? `Task "${activeTask.title}" is ready.` : 'Ask for code generation, file edits, terminal execution, or a self-contained UI artifact.'}
               </p>
               <p className="mt-3 text-sm leading-6 text-slate-400">
                 Example: &quot;Build a pricing page artifact in React and write the files into src/pages.&quot;
@@ -177,6 +184,7 @@ export const ChatPanel = () => {
           <>
             <ApprovalCenter />
             <AutomationInbox />
+            <TaskSwitcher />
             <AutomationPanel />
           </>
         );
@@ -201,6 +209,9 @@ export const ChatPanel = () => {
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
               {isStreaming ? 'Streaming' : 'Idle'}
+            </span>
+            <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-3 py-1 text-xs text-violet-100">
+              {workspaceTasks.length} tasks
             </span>
             <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs text-emerald-200">
               {toolSummary.running} tools running

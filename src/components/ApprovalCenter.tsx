@@ -4,6 +4,7 @@ import { TOOL_POLICY_DESCRIPTIONS } from '../../shared/tool-policy';
 
 export const ApprovalCenter = () => {
   const pendingToolApprovals = useAppStore((state) => state.pendingToolApprovals);
+  const workspaceTasks = useAppStore((state) => state.workspaceTasks);
 
   if (pendingToolApprovals.length === 0) {
     return null;
@@ -37,6 +38,11 @@ export const ApprovalCenter = () => {
                   <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-amber-50">
                     {approval.toolName}
                   </span>
+                  {approval.taskId ? (
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200">
+                      {workspaceTasks.find((task) => task.id === approval.taskId)?.title ?? 'Task'}
+                    </span>
+                  ) : null}
                   <span className="text-xs text-amber-100/70">
                     {new Date(approval.requestedAt).toLocaleTimeString()}
                   </span>

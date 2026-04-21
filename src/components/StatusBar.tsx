@@ -8,14 +8,16 @@ export const StatusBar = () => {
   const acknowledgedAutomationRunIds = useAppStore((state) => state.acknowledgedAutomationRunIds);
   const config = useAppStore((state) => state.config);
   const activeArtifactId = useAppStore((state) => state.activeArtifactId);
-  const isStreaming = useAppStore((state) => state.isStreaming);
+  const workspaceTasks = useAppStore((state) => state.workspaceTasks);
   const unreadAutomationCount = countUnreadAutomationRuns(automationRuns, acknowledgedAutomationRunIds);
+  const busyTasks = workspaceTasks.filter((task) => task.status === 'queued' || task.status === 'running' || task.status === 'blocked');
 
   const items = [
     config.model || 'No model',
-    isStreaming ? 'stream live' : 'stream idle',
+    busyTasks.length > 0 ? `${busyTasks.length} task live` : 'tasks idle',
     `${automations.filter((automation) => automation.status === 'active').length} automations active`,
     `${unreadAutomationCount} unread automation updates`,
+    `${workspaceTasks.length} tasks`,
     activeArtifactId ? 'artifact selected' : 'artifact empty',
     appInfo ? `${appInfo.platform} | Node ${appInfo.nodeVersion}` : 'renderer booting',
   ];
