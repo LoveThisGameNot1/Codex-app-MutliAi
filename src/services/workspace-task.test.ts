@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { createTaskTitleFromPrompt, createWorkspaceTask, deriveStreamingState, isTaskBusy } from './workspace-task';
+import {
+  createTaskTitleFromPrompt,
+  createWorkspaceTask,
+  deriveStreamingState,
+  isTaskBusy,
+  recoverWorkspaceGraph,
+} from './workspace-task';
 
 describe('workspace-task helpers', () => {
   it('creates readable task titles from prompts', () => {
@@ -49,5 +55,115 @@ describe('workspace-task helpers', () => {
       isStreaming: true,
       activeRequestId: 'request-2',
     });
+  });
+
+  it('recovers persisted task graphs after restart', () => {
+    const rootTask = {
+      ...createWorkspaceTask({
+        id: 'task-root',
+        workspaceSessionId: 'workspace-abc',
+        title: 'Main task',
+        createdAt: '2026-04-21T12:00:00.000Z',
+      }),
+      status: 'completed' as const,
+      updatedAt: '2026-04-21T12:10:00.000Z',
+    };
+    const blockedChildTask = {
+      ...createWorkspaceTask({
+        id: 'task-child',
+        workspaceSessionId: 'workspace-abc',
+        title: 'Subtask',
+        parentTaskId: 'task-root',
+        scopeSummary: 'Only inspect src/components',
+        createdAt: '2026-04-21T12:11:00.000Z',
+      }),
+      status: 'blocked' as const,
+      requestId: 'request-child',
+      updatedAt: '2026-04-21T12:12:00.000Z',
+    };
+
+    const result = recoverWorkspaceGraph({
+      workspaceSessionId: 'workspace-abc',
+      workspaceTasks: [rootTask, blockedChildTask],
+      activeTaskId: 'missing-task',
+      messages: [
+        {
+          taskId: 'task-child',
+          content: 'Inspect the sidebar implementation and report risks.',
+          createdAt: '2026-04-21T12:13:00.000Z',
+        },
+        {
+          taskId: 'task-orphan',
+          content: 'Recovered task prompt',
+          createdAt: '2026-04-21T12:20:00.000Z',
+        },
+      ],
+      artifacts: [
+        {
+          taskId: 'task-orphan',
+          createdAt: '2026-04-21T12:21:00.000Z',
+          updatedAt: '2026-04-21T12:21:00.000Z',
+        },
+      ],
+      toolExecutions: [
+        {
+          taskId: 'task-child',
+          startedAt: '2026-04-21T12:14:00.000Z',
+          finishedAt: '2026-04-21T12:15:00.000Z',
+        },
+      ],
+    });
+
+    expect(result.workspaceTasks).toHaveLength(3);
+    expect(result.activeTaskId).toBe('task-orphan');
+
+    const recoveredChild = result.workspaceTasks.find((task) => task.id === 'task-child');
+    expect(recoveredChild).toMatchObject({
+      parentTaskId: 'task-root',
+      status: 'failed',
+      requestId: null,
+      scopeSummary: 'Only inspect src/components',
+      lastMessagePreview: 'Inspect the sidebar implementation and report risks.',
+    });
+
+    const recoveredOrphan = result.workspaceTasks.find((task) => task.id === 'task-orphan');
+    expect(recoveredOrphan).toMatchObject({
+      title: 'Recovered task prompt',
+      parentTaskId: null,
+      status: 'idle',
+      requestId: null,
+      lastMessagePreview: 'Recovered task prompt',
+    });
+  });
+
+  it('drops invalid parent references during recovery', () => {
+    const orphanedChild = {
+      ...createWorkspaceTask({
+        id: 'task-child',
+        workspaceSessionId: 'workspace-abc',
+        title: 'Child task',
+        parentTaskId: 'missing-parent',
+        createdAt: '2026-04-21T12:11:00.000Z',
+      }),
+      status: 'running' as const,
+      requestId: 'request-child',
+    };
+
+    const result = recoverWorkspaceGraph({
+      workspaceSessionId: 'workspace-abc',
+      workspaceTasks: [orphanedChild],
+      activeTaskId: 'task-child',
+      messages: [],
+      artifacts: [],
+      toolExecutions: [],
+    });
+
+    expect(result.workspaceTasks[0]).toMatchObject({
+      id: 'task-child',
+      parentTaskId: null,
+      status: 'failed',
+      requestId: null,
+    });
+    expect(result.activeTaskId).toBe('task-child');
   });
 });

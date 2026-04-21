@@ -34,7 +34,7 @@ Why this matters:
 - [x] Give each task its own status, logs, and artifact outputs.
 - [x] Add a task switcher with progress states like queued, running, blocked, failed, completed.
 - [x] Allow one agent to spawn sub-tasks with bounded scopes.
-- [ ] Persist task graphs and restore them after app restart.
+- [x] Persist task graphs and restore them after app restart.
 - [ ] Add tests for concurrent streams, cancellation, and state recovery.
 
 Why this matters:

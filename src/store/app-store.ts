@@ -22,6 +22,7 @@ import {
   createTaskTitleFromPrompt,
   createWorkspaceTask,
   deriveStreamingState,
+  recoverWorkspaceGraph,
   type WorkspaceTask,
   type WorkspaceTaskStatus,
 } from '@/services/workspace-task';
@@ -573,27 +574,28 @@ export const useAppStore = create<AppState>()(
             const normalizedMessages = fallbackTaskId ? attachTaskId(sanitizeRecoveredMessages(state.messages), fallbackTaskId) : state.messages;
             const normalizedArtifacts = fallbackTaskId ? attachTaskId(sanitizeRecoveredArtifacts(state.artifacts), fallbackTaskId) : state.artifacts;
             const normalizedTools = fallbackTaskId ? attachTaskId(sanitizeRecoveredTools(state.toolExecutions), fallbackTaskId) : state.toolExecutions;
-            const nextTasks = workspaceTasks.map((task, index) =>
-              index === 0 && !task.lastMessagePreview && normalizedMessages.length > 0
-                ? {
-                    ...task,
-                    lastMessagePreview:
-                      normalizedMessages
-                        .filter((message) => message.taskId === task.id && message.role === 'user')
-                        .at(-1)
-                        ?.content.slice(0, 120) ?? '',
-                  }
-                : task,
-            );
+            const recoveredWorkspace = recoverWorkspaceGraph({
+              workspaceSessionId: state.sessionId,
+              workspaceTasks,
+              activeTaskId: state.activeTaskId,
+              messages: normalizedMessages,
+              artifacts: normalizedArtifacts,
+              toolExecutions: normalizedTools,
+            });
+
             return {
-              workspaceTasks: nextTasks,
-              activeTaskId: fallbackTaskId,
+              workspaceTasks: recoveredWorkspace.workspaceTasks,
+              activeTaskId: recoveredWorkspace.activeTaskId,
               isStreaming: false,
-              activeRequestId: nextTasks.find((task) => task.id === fallbackTaskId)?.requestId ?? null,
+              activeRequestId:
+                recoveredWorkspace.workspaceTasks.find((task) => task.id === recoveredWorkspace.activeTaskId)?.requestId ?? null,
               pendingToolApprovals: [],
               messages: normalizedMessages,
               artifacts: normalizedArtifacts,
               toolExecutions: normalizedTools,
+              activeArtifactId:
+                normalizedArtifacts.find((artifact) => artifact.taskId === recoveredWorkspace.activeTaskId)?.id ??
+                state.activeArtifactId,
             };
           }),
       };
