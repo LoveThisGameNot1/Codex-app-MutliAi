@@ -35,7 +35,7 @@ Why this matters:
 - [x] Add a task switcher with progress states like queued, running, blocked, failed, completed.
 - [x] Allow one agent to spawn sub-tasks with bounded scopes.
 - [x] Persist task graphs and restore them after app restart.
-- [ ] Add tests for concurrent streams, cancellation, and state recovery.
+- [x] Add tests for concurrent streams, cancellation, and state recovery.
 
 Why this matters:
 - This is one of the clearest product differences versus Codex app today.
@@ -76,6 +76,7 @@ Why this matters:
 ## Priority 6: Hooks, Commands, And Reusable Workflows
 
 - [ ] Add slash-command support for frequent workflows.
+- [ ] Add a planning tool for breaking larger goals into structured execution steps.
 - [ ] Add prompt hooks / tool hooks / post-run hooks.
 - [ ] Add reusable workflow templates for tasks like code review, release prep, dependency audits, and UI generation.
 - [ ] Allow automations to invoke these workflows directly.
@@ -157,3 +158,4 @@ Why this matters:
 - Always verify with tests and builds after each meaningful change.
 - Keep local-first strengths intact instead of copying cloud-only product assumptions blindly.
 - When in doubt, prioritize safety and recoverability before adding more autonomy.
+

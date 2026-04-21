@@ -26,9 +26,35 @@ type ActiveTaskRun = {
   parser: ArtifactStreamParser;
 };
 
-class ChatRuntime {
+type ChatRuntimeDependencies = {
+  startChat: typeof startChat;
+  cancelChat: typeof cancelChat;
+  resetChat: typeof resetChat;
+  updateConfig: typeof updateConfig;
+  listSessions: typeof listSessions;
+  loadSession: typeof loadSession;
+  deleteSession: typeof deleteSession;
+  resolveToolApproval: typeof resolveToolApproval;
+  onChatEvent: typeof onChatEvent;
+};
+
+const defaultDependencies: ChatRuntimeDependencies = {
+  startChat,
+  cancelChat,
+  resetChat,
+  updateConfig,
+  listSessions,
+  loadSession,
+  deleteSession,
+  resolveToolApproval,
+  onChatEvent,
+};
+
+export class ChatRuntime {
   private unsubscribe: (() => void) | null = null;
   private readonly activeRuns = new Map<string, ActiveTaskRun>();
+
+  public constructor(private readonly dependencies: ChatRuntimeDependencies = defaultDependencies) {}
 
   private async startTaskMessage(taskId: string, content: string): Promise<void> {
     const state = useAppStore.getState();
@@ -78,7 +104,7 @@ class ChatRuntime {
       parser,
     });
 
-    await startChat({
+    await this.dependencies.startChat({
       requestId,
       sessionId: task.sessionId,
       message: content,
@@ -91,7 +117,7 @@ class ChatRuntime {
       return;
     }
 
-    this.unsubscribe = onChatEvent((event) => {
+    this.unsubscribe = this.dependencies.onChatEvent((event) => {
       void this.handleEvent(event);
     });
 
@@ -117,7 +143,7 @@ class ChatRuntime {
       return;
     }
 
-    await cancelChat({ requestId: activeTask.requestId });
+    await this.dependencies.cancelChat({ requestId: activeTask.requestId });
   }
 
   public async cancelTask(taskId: string): Promise<void> {
@@ -126,7 +152,7 @@ class ChatRuntime {
       return;
     }
 
-    await cancelChat({ requestId: task.requestId });
+    await this.dependencies.cancelChat({ requestId: task.requestId });
   }
 
   public async createTask(title?: string): Promise<void> {
@@ -161,24 +187,24 @@ class ChatRuntime {
 
   public async resetConversation(): Promise<void> {
     const state = useAppStore.getState();
-    await Promise.all(state.workspaceTasks.map((task) => resetChat({ sessionId: task.sessionId })));
+    await Promise.all(state.workspaceTasks.map((task) => this.dependencies.resetChat({ sessionId: task.sessionId })));
     state.resetConversation();
     this.activeRuns.clear();
   }
 
   public async persistConfig(): Promise<void> {
     const config = useAppStore.getState().config;
-    const next = await updateConfig(config);
+    const next = await this.dependencies.updateConfig(config);
     useAppStore.getState().hydrateConfig(next);
   }
 
   public async refreshSessionLibrary(): Promise<void> {
-    const sessions = await listSessions();
+    const sessions = await this.dependencies.listSessions();
     useAppStore.getState().setPersistedSessions(sessions);
   }
 
   public async loadPersistedSession(sessionId: string): Promise<void> {
-    const session = await loadSession(sessionId);
+    const session = await this.dependencies.loadSession(sessionId);
     if (!session) {
       return;
     }
@@ -197,7 +223,7 @@ class ChatRuntime {
   }
 
   public async deletePersistedSession(sessionId: string): Promise<void> {
-    await deleteSession(sessionId);
+    await this.dependencies.deleteSession(sessionId);
     await this.refreshSessionLibrary();
   }
 
@@ -205,7 +231,7 @@ class ChatRuntime {
     if (scope === 'always') {
       const approval = useAppStore.getState().pendingToolApprovals.find((item) => item.id === approvalId);
       if (approval) {
-        const nextConfig = await updateConfig({
+        const nextConfig = await this.dependencies.updateConfig({
           toolPolicy: {
             ...useAppStore.getState().config.toolPolicy,
             [approval.policyKey]: 'allow',
@@ -215,7 +241,7 @@ class ChatRuntime {
       }
     }
 
-    await resolveToolApproval({
+    await this.dependencies.resolveToolApproval({
       approvalId,
       decision: 'approve',
       scope,
@@ -223,10 +249,16 @@ class ChatRuntime {
   }
 
   public async rejectToolRequest(approvalId: string): Promise<void> {
-    await resolveToolApproval({
+    await this.dependencies.resolveToolApproval({
       approvalId,
       decision: 'reject',
     });
+  }
+
+  public dispose(): void {
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+    this.activeRuns.clear();
   }
 
   private async handleEvent(event: ChatStreamEvent): Promise<void> {
