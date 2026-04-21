@@ -96,7 +96,7 @@ const parseJson = <T>(input: string): T => {
   }
 };
 
-const buildPrompt = (config: AppConfig): string => {
+const buildPrompt = (config: AppConfig, workingDirectory?: string | null): string => {
   const trimmed = config.systemPrompt.trim();
   const basePrompt = trimmed || DEFAULT_SYSTEM_PROMPT;
   const toolPolicy = normalizeToolPolicy(config.toolPolicy);
@@ -106,6 +106,10 @@ Runtime capabilities:
 - The workspace supports recurring automations.
 - Available automation tools are list_automations, create_automation, update_automation, delete_automation, and run_automation.
 - Use automation tools when the user asks for repeated work, scheduled checks, or autonomous follow-up runs.
+- Relative file paths and terminal commands resolve from the current task working directory.
+
+Current task working directory:
+${workingDirectory?.trim() || 'workspace root'}
 
 Current tool approval policy:
 ${describeToolPolicyForPrompt(toolPolicy).join('\n')}`;
@@ -488,7 +492,8 @@ export class LlmService {
     }
 
     const client = buildOpenAIClient(config);
-    const prompt = buildPrompt(config);
+    const effectiveWorkingDirectory = request.workingDirectory?.trim() || this.workspaceRoot;
+    const prompt = buildPrompt(config, request.workingDirectory);
     const session = this.ensureSession(sessionId, prompt);
 
     session.messages.push({
@@ -509,7 +514,7 @@ export class LlmService {
     const abortController = new AbortController();
     this.activeAbortControllers.set(requestId, abortController);
     const context: ToolContext = {
-      workspaceRoot: this.workspaceRoot,
+      workspaceRoot: effectiveWorkingDirectory,
       signal: abortController.signal,
       toolPolicy: normalizeToolPolicy(config.toolPolicy),
       approvalState: {
@@ -622,7 +627,8 @@ export class LlmService {
       return;
     }
 
-    const prompt = buildPrompt(config);
+    const effectiveWorkingDirectory = request.workingDirectory?.trim() || this.workspaceRoot;
+    const prompt = buildPrompt(config, request.workingDirectory);
     const session = this.ensureSession(sessionId, prompt);
     session.messages.push({
       role: 'user',
@@ -641,7 +647,7 @@ export class LlmService {
     const abortController = new AbortController();
     this.activeAbortControllers.set(requestId, abortController);
     const context: ToolContext = {
-      workspaceRoot: this.workspaceRoot,
+      workspaceRoot: effectiveWorkingDirectory,
       signal: abortController.signal,
       toolPolicy: normalizeToolPolicy(config.toolPolicy),
       approvalState: {
@@ -825,7 +831,8 @@ export class LlmService {
       return;
     }
 
-    const prompt = buildPrompt(config);
+    const effectiveWorkingDirectory = request.workingDirectory?.trim() || this.workspaceRoot;
+    const prompt = buildPrompt(config, request.workingDirectory);
     const session = this.ensureSession(sessionId, prompt);
     session.messages.push({
       role: 'user',
@@ -844,7 +851,7 @@ export class LlmService {
     const abortController = new AbortController();
     this.activeAbortControllers.set(requestId, abortController);
     const context: ToolContext = {
-      workspaceRoot: this.workspaceRoot,
+      workspaceRoot: effectiveWorkingDirectory,
       signal: abortController.signal,
       toolPolicy: normalizeToolPolicy(config.toolPolicy),
       approvalState: {

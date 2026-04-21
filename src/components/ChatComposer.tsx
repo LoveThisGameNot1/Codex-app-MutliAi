@@ -84,6 +84,9 @@ export const ChatComposer = () => {
           <p className="text-xs text-slate-500">
             `Enter` sends, `Shift + Enter` inserts a newline. Tools run in the Electron main process.
           </p>
+          <p className="text-xs text-slate-500">
+            Active task working directory: <span className="text-slate-300">{activeTask?.workingDirectory || 'workspace root'}</span>
+          </p>
           {!selectedModelCapabilities.recommendedForAgent ? (
             <p className="text-xs text-amber-200/80">
               Current model fit: streaming {selectedModelCapabilities.streaming}, tool calling{' '}

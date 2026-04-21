@@ -6,6 +6,7 @@ export type WorkspaceTask = {
   title: string;
   parentTaskId: string | null;
   scopeSummary: string | null;
+  workingDirectory: string | null;
   status: WorkspaceTaskStatus;
   createdAt: string;
   updatedAt: string;
@@ -30,6 +31,7 @@ export const createWorkspaceTask = (input: {
   title?: string;
   parentTaskId?: string | null;
   scopeSummary?: string | null;
+  workingDirectory?: string | null;
   createdAt?: string;
 }): WorkspaceTask => {
   const timestamp = input.createdAt ?? nowIso();
@@ -39,6 +41,7 @@ export const createWorkspaceTask = (input: {
     title: input.title?.trim() || 'New task',
     parentTaskId: input.parentTaskId ?? null,
     scopeSummary: input.scopeSummary?.trim() || null,
+    workingDirectory: input.workingDirectory?.trim() || null,
     status: 'idle',
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -141,6 +144,7 @@ export const recoverWorkspaceGraph = (input: RecoverWorkspaceGraphInput): Recove
     return {
       ...task,
       parentTaskId: task.parentTaskId && taskMap.has(task.parentTaskId) ? task.parentTaskId : null,
+      workingDirectory: task.workingDirectory?.trim() || null,
       title:
         task.title.trim() && !task.title.startsWith('Recovered task')
           ? task.title

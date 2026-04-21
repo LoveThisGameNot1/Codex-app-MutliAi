@@ -108,6 +108,7 @@ export class ChatRuntime {
       requestId,
       sessionId: task.sessionId,
       message: content,
+      workingDirectory: task.workingDirectory,
       config: state.config,
     });
   }
@@ -176,6 +177,7 @@ export class ChatRuntime {
       title: input.title,
       parentTaskId: input.parentTaskId,
       scopeSummary: input.scopeSummary,
+      workingDirectory: parentTask.workingDirectory,
     });
     state.addSystemMessage(
       input.parentTaskId,

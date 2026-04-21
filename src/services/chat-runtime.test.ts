@@ -177,6 +177,22 @@ describe('ChatRuntime', () => {
     runtime.dispose();
   });
 
+  it('passes the active task working directory to backend chat runs', async () => {
+    const runtime = new ChatRuntime();
+    runtime.initialize();
+
+    useAppStore.getState().updateTaskWorkingDirectory('task-main', 'packages/desktop-shell');
+    useAppStore.getState().setActiveTaskId('task-main');
+    useAppStore.getState().setComposerValue('Run inside the desktop package');
+    await runtime.sendCurrentComposerMessage();
+
+    expect(runtimeMocks.startChatMock).toHaveBeenCalledTimes(1);
+    const [request] = runtimeMocks.startChatMock.mock.calls.map(([call]) => call);
+    expect(request.workingDirectory).toBe('packages/desktop-shell');
+
+    runtime.dispose();
+  });
+
   it('cancels only the targeted task run', async () => {
     const runtime = new ChatRuntime();
     runtime.initialize();

@@ -135,6 +135,7 @@ export type StartChatRequest = {
   requestId: string;
   sessionId: string;
   message: string;
+  workingDirectory?: string | null;
   config: AppConfig;
 };
 

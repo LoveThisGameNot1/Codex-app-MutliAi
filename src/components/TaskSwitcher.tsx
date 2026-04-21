@@ -15,6 +15,7 @@ export const TaskSwitcher = () => {
   const workspaceTasks = useAppStore((state) => state.workspaceTasks);
   const activeTaskId = useAppStore((state) => state.activeTaskId);
   const setActiveTaskId = useAppStore((state) => state.setActiveTaskId);
+  const updateTaskWorkingDirectory = useAppStore((state) => state.updateTaskWorkingDirectory);
 
   return (
     <section className="rounded-[28px] border border-white/10 bg-slate-950/60 p-4 shadow-panel backdrop-blur">
@@ -59,6 +60,9 @@ export const TaskSwitcher = () => {
                   Scope: {task.scopeSummary}
                 </p>
               ) : null}
+              <p className="mt-2 text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                Workdir: {task.workingDirectory || 'workspace root'}
+              </p>
               {task.parentTaskId ? (
                 <p className="mt-1 text-[11px] text-slate-500">Subtask of {task.parentTaskId.slice(0, 8)}</p>
               ) : null}
@@ -76,6 +80,28 @@ export const TaskSwitcher = () => {
               >
                 Stop Task
               </button>
+            ) : null}
+
+            {activeTaskId === task.id ? (
+              <div className="mt-3 space-y-2 rounded-2xl border border-white/10 bg-slate-950/60 p-3">
+                <label className="block text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                  Task Working Directory
+                </label>
+                <input
+                  type="text"
+                  value={task.workingDirectory ?? ''}
+                  onChange={(event) => updateTaskWorkingDirectory(task.id, event.target.value)}
+                  placeholder="Workspace root"
+                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 outline-none transition focus:border-sky-400/40"
+                />
+                <button
+                  type="button"
+                  onClick={() => updateTaskWorkingDirectory(task.id, null)}
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-slate-300 transition hover:bg-white/10"
+                >
+                  Use Workspace Root
+                </button>
+              </div>
             ) : null}
           </article>
         ))}

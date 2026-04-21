@@ -73,8 +73,14 @@ export type AppState = {
   setComposerValue: (value: string) => void;
   setSettingsOpen: (open: boolean) => void;
   setWorkspaceSection: (section: WorkspaceSection) => void;
-  createTask: (input?: { title?: string; parentTaskId?: string | null; scopeSummary?: string | null }) => string;
+  createTask: (input?: {
+    title?: string;
+    parentTaskId?: string | null;
+    scopeSummary?: string | null;
+    workingDirectory?: string | null;
+  }) => string;
   setActiveTaskId: (taskId: string) => void;
+  updateTaskWorkingDirectory: (taskId: string, workingDirectory: string | null) => void;
   setPersistedSessions: (sessions: PersistedSessionSummary[]) => void;
   setAutomations: (automations: AutomationRecord[]) => void;
   setAutomationRuns: (runs: AutomationRunRecord[]) => void;
@@ -227,6 +233,7 @@ export const useAppStore = create<AppState>()(
               title: input?.title,
               parentTaskId: input?.parentTaskId,
               scopeSummary: input?.scopeSummary,
+              workingDirectory: input?.workingDirectory,
             });
             const workspaceTasks = [task, ...state.workspaceTasks];
             return {
@@ -243,6 +250,14 @@ export const useAppStore = create<AppState>()(
             activeTaskId,
             activeArtifactId: state.artifacts.find((artifact) => artifact.taskId === activeTaskId)?.id ?? null,
             activeRequestId: state.workspaceTasks.find((task) => task.id === activeTaskId)?.requestId ?? null,
+          })),
+        updateTaskWorkingDirectory: (taskId, workingDirectory) =>
+          set((state) => ({
+            workspaceTasks: updateTaskCollection(state.workspaceTasks, taskId, (task) => ({
+              ...task,
+              workingDirectory: workingDirectory?.trim() || null,
+              updatedAt: nowIso(),
+            })),
           })),
       setPersistedSessions: (persistedSessions) => set({ persistedSessions }),
       setAutomations: (automations) => set({ automations }),

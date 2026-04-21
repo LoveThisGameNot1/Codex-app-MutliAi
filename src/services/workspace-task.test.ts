@@ -29,6 +29,19 @@ describe('workspace-task helpers', () => {
     expect(task.status).toBe('idle');
     expect(task.parentTaskId).toBe('task-root');
     expect(task.scopeSummary).toBe('Only inspect src/components');
+    expect(task.workingDirectory).toBeNull();
+  });
+
+  it('stores a custom working directory per task', () => {
+    const task = createWorkspaceTask({
+      id: 'task-2',
+      workspaceSessionId: 'workspace-abc',
+      title: 'Isolated task',
+      workingDirectory: 'packages/desktop-app',
+      createdAt: '2026-04-21T12:05:00.000Z',
+    });
+
+    expect(task.workingDirectory).toBe('packages/desktop-app');
   });
 
   it('derives global streaming state from task statuses', () => {
@@ -123,6 +136,7 @@ describe('workspace-task helpers', () => {
       status: 'failed',
       requestId: null,
       scopeSummary: 'Only inspect src/components',
+      workingDirectory: null,
       lastMessagePreview: 'Inspect the sidebar implementation and report risks.',
     });
 
@@ -143,6 +157,7 @@ describe('workspace-task helpers', () => {
         workspaceSessionId: 'workspace-abc',
         title: 'Child task',
         parentTaskId: 'missing-parent',
+        workingDirectory: 'apps/review-bot',
         createdAt: '2026-04-21T12:11:00.000Z',
       }),
       status: 'running' as const,
@@ -161,6 +176,7 @@ describe('workspace-task helpers', () => {
     expect(result.workspaceTasks[0]).toMatchObject({
       id: 'task-child',
       parentTaskId: null,
+      workingDirectory: 'apps/review-bot',
       status: 'failed',
       requestId: null,
     });

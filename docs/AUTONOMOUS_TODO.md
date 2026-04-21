@@ -42,7 +42,7 @@ Why this matters:
 
 ## Priority 3: Workspace Isolation And Safer Execution Modes
 
-- [ ] Add optional isolated execution modes for agent work, starting with per-task working directories.
+- [x] Add optional isolated execution modes for agent work, starting with per-task working directories.
 - [ ] Create a “safe workspace clone” mode for risky operations.
 - [ ] Add explicit UX showing whether the current run is operating in the live workspace or an isolated copy.
 - [ ] Add cleanup and retention rules for temporary workspaces.
@@ -158,4 +158,5 @@ Why this matters:
 - Always verify with tests and builds after each meaningful change.
 - Keep local-first strengths intact instead of copying cloud-only product assumptions blindly.
 - When in doubt, prioritize safety and recoverability before adding more autonomy.
+
 
