@@ -55,7 +55,7 @@ Why this matters:
 
 - [x] Build a review panel for changed files, diffs, and commit summaries.
 - [x] Add staged/unstaged visibility inside the app.
-- [ ] Support commit drafting, branch creation, and PR prep from the UI.
+- [x] Support commit drafting, branch creation, and PR prep from the UI.
 - [ ] Add a code-review mode that highlights risks, regressions, and missing tests.
 - [ ] Support inline review comments anchored to files and lines.
 

@@ -168,6 +168,49 @@ export type GitDiffResult = {
   generatedAt: string;
 };
 
+export type GitCommitDraft = {
+  message: string;
+  summary: string;
+  generatedAt: string;
+};
+
+export type GitCreateBranchInput = {
+  name: string;
+  fromRef?: string | null;
+};
+
+export type GitBranchResult = {
+  branch: string;
+  previousBranch: string | null;
+  created: boolean;
+  switchedAt: string;
+};
+
+export type GitCreateCommitInput = {
+  message: string;
+};
+
+export type GitCommitResult = {
+  branch: string | null;
+  hash: string;
+  summary: string;
+  createdAt: string;
+};
+
+export type GitPullRequestPrep = {
+  branch: string | null;
+  upstream: string | null;
+  suggestedTitle: string;
+  suggestedBranchName: string;
+  summary: string[];
+  testingChecklist: string[];
+  commitSummaries: string[];
+  diffStat: string;
+  body: string;
+  generatedAt: string;
+  warning?: string;
+};
+
 export type ChatMessage = {
   id: string;
   taskId?: string;
@@ -405,6 +448,10 @@ export type DesktopApi = {
   runAutomation: (automationId: string) => Promise<AutomationRunRecord>;
   getGitReview: () => Promise<GitReviewSnapshot>;
   getGitDiff: (request: GitDiffRequest) => Promise<GitDiffResult>;
+  draftGitCommit: () => Promise<GitCommitDraft>;
+  createGitBranch: (input: GitCreateBranchInput) => Promise<GitBranchResult>;
+  createGitCommit: (input: GitCreateCommitInput) => Promise<GitCommitResult>;
+  prepareGitPullRequest: () => Promise<GitPullRequestPrep>;
   createSafeTaskClone: (input: CreateSafeTaskCloneInput) => Promise<TaskCloneResult>;
   discardSafeTaskClone: (clonePath: string) => Promise<void>;
   startChat: (request: StartChatRequest) => Promise<void>;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { GitChangedFile, GitDiffResult } from '../../shared/contracts';
-import { getGitDiff } from '@/services/electron-api';
+import type { GitChangedFile, GitCommitDraft, GitDiffResult, GitPullRequestPrep } from '../../shared/contracts';
+import { createGitBranch, createGitCommit, draftGitCommit, getGitDiff, prepareGitPullRequest } from '@/services/electron-api';
 import { gitRuntime } from '@/services/git-runtime';
 import { useAppStore } from '@/store/app-store';
 import { cn } from '@/utils/cn';
@@ -24,6 +24,9 @@ const changeTone = (kind?: string): string => {
 };
 
 const sectionStyle = 'rounded-[28px] border border-white/10 bg-slate-950/70 p-5 shadow-panel backdrop-blur';
+
+const actionButtonStyle =
+  'rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50';
 
 const DiffCard = ({
   title,
@@ -87,6 +90,16 @@ export const ReviewPanel = () => {
   const [diffResult, setDiffResult] = useState<GitDiffResult | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
   const [diffError, setDiffError] = useState<string | null>(null);
+  const [commitDraft, setCommitDraft] = useState<GitCommitDraft | null>(null);
+  const [commitMessage, setCommitMessage] = useState('');
+  const [branchName, setBranchName] = useState('');
+  const [prPrep, setPrPrep] = useState<GitPullRequestPrep | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [branchLoading, setBranchLoading] = useState(false);
+  const [commitLoading, setCommitLoading] = useState(false);
+  const [prPrepLoading, setPrPrepLoading] = useState(false);
 
   useEffect(() => {
     void gitRuntime.refreshReview();
@@ -142,6 +155,88 @@ export const ReviewPanel = () => {
         : [],
     [gitReview],
   );
+
+  const loadCommitDraft = async () => {
+    setDraftLoading(true);
+    setActionError(null);
+    setActionNotice(null);
+
+    try {
+      const draft = await draftGitCommit();
+      setCommitDraft(draft);
+      setCommitMessage(draft.message);
+      setBranchName((current) => current || draft.message.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/^/, 'codex/'));
+      setActionNotice('Commit draft refreshed from the current review state.');
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to draft a commit message.');
+    } finally {
+      setDraftLoading(false);
+    }
+  };
+
+  const handleCreateBranch = async () => {
+    setBranchLoading(true);
+    setActionError(null);
+    setActionNotice(null);
+
+    try {
+      const result = await createGitBranch({
+        name: branchName,
+      });
+      setActionNotice(
+        result.created
+          ? `Created and switched to ${result.branch}.`
+          : `Switched to existing branch ${result.branch}.`,
+      );
+      const refreshed = await gitRuntime.refreshReview();
+      if (refreshed) {
+        setGitReview(refreshed);
+      }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to create or switch branches.');
+    } finally {
+      setBranchLoading(false);
+    }
+  };
+
+  const handleCreateCommit = async () => {
+    setCommitLoading(true);
+    setActionError(null);
+    setActionNotice(null);
+
+    try {
+      const result = await createGitCommit({
+        message: commitMessage,
+      });
+      setActionNotice(`Created commit ${result.summary}.`);
+      const refreshed = await gitRuntime.refreshReview();
+      if (refreshed) {
+        setGitReview(refreshed);
+      }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to create a commit.');
+    } finally {
+      setCommitLoading(false);
+    }
+  };
+
+  const handlePreparePr = async () => {
+    setPrPrepLoading(true);
+    setActionError(null);
+    setActionNotice(null);
+
+    try {
+      const prep = await prepareGitPullRequest();
+      setPrPrep(prep);
+      setBranchName((current) => current || prep.suggestedBranchName);
+      setCommitMessage((current) => current || prep.suggestedTitle);
+      setActionNotice('PR prep draft refreshed from the current branch state.');
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to prepare a pull request draft.');
+    } finally {
+      setPrPrepLoading(false);
+    }
+  };
 
   if (!gitReview) {
     return (
@@ -206,6 +301,104 @@ export const ReviewPanel = () => {
         ) : null}
         <p className="mt-3 text-xs text-slate-500">{gitReview.summary}</p>
       </div>
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        <div className={sectionStyle}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-100">Commit Draft</p>
+              <p className="mt-1 text-xs text-slate-500">Generate a suggested commit message from the current review scope, then commit staged changes.</p>
+            </div>
+            <button type="button" onClick={() => void loadCommitDraft()} className={actionButtonStyle} disabled={draftLoading}>
+              {draftLoading ? 'Drafting...' : 'Draft message'}
+            </button>
+          </div>
+
+          <textarea
+            value={commitMessage}
+            onChange={(event) => setCommitMessage(event.target.value)}
+            placeholder="Draft or edit a commit message"
+            className="mt-4 min-h-[110px] w-full rounded-3xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-300/40"
+          />
+
+          {commitDraft ? <p className="mt-3 text-xs text-slate-500">{commitDraft.summary}</p> : null}
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void handleCreateCommit()}
+              className={actionButtonStyle}
+              disabled={commitLoading || !commitMessage.trim()}
+            >
+              {commitLoading ? 'Committing...' : 'Commit staged changes'}
+            </button>
+          </div>
+        </div>
+
+        <div className={sectionStyle}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-100">Branch Flow</p>
+              <p className="mt-1 text-xs text-slate-500">Create a new working branch or switch to an existing one without leaving the review center.</p>
+            </div>
+          </div>
+
+          <input
+            value={branchName}
+            onChange={(event) => setBranchName(event.target.value)}
+            placeholder="codex/review-center"
+            className="mt-4 w-full rounded-full border border-white/10 bg-black/20 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-300/40"
+          />
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void handleCreateBranch()}
+              className={actionButtonStyle}
+              disabled={branchLoading || !branchName.trim()}
+            >
+              {branchLoading ? 'Switching...' : 'Create or switch branch'}
+            </button>
+          </div>
+        </div>
+
+        <div className={sectionStyle}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-100">PR Prep</p>
+              <p className="mt-1 text-xs text-slate-500">Generate a PR-ready title, body, and testing checklist from the current branch and review state.</p>
+            </div>
+            <button type="button" onClick={() => void handlePreparePr()} className={actionButtonStyle} disabled={prPrepLoading}>
+              {prPrepLoading ? 'Preparing...' : 'Generate PR prep'}
+            </button>
+          </div>
+
+          {prPrep ? (
+            <div className="mt-4 space-y-3">
+              <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
+                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Suggested title</p>
+                <p className="mt-2 text-sm font-medium text-slate-100">{prPrep.suggestedTitle}</p>
+                <p className="mt-3 text-[11px] uppercase tracking-[0.18em] text-slate-500">Suggested branch</p>
+                <p className="mt-2 text-sm text-slate-300">{prPrep.suggestedBranchName}</p>
+              </div>
+
+              <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
+                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">PR body</p>
+                <pre className="mt-3 max-h-[260px] overflow-auto whitespace-pre-wrap text-xs leading-6 text-slate-200">{prPrep.body}</pre>
+              </div>
+
+              {prPrep.warning ? <p className="text-xs text-amber-300">{prPrep.warning}</p> : null}
+            </div>
+          ) : (
+            <div className="mt-4 rounded-3xl border border-dashed border-white/10 bg-black/10 p-4 text-sm text-slate-500">
+              No PR draft generated yet.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {actionError ? <div className="rounded-3xl border border-rose-300/20 bg-rose-300/10 px-4 py-3 text-sm text-rose-200">{actionError}</div> : null}
+      {actionNotice ? <div className="rounded-3xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-200">{actionNotice}</div> : null}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(300px,0.45fr)_minmax(300px,0.55fr)]">
         <div className="grid gap-4">

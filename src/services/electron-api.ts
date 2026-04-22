@@ -10,8 +10,14 @@ import type {
   CreateSafeTaskCloneInput,
   CreateAutomationInput,
   DesktopAppInfo,
+  GitBranchResult,
+  GitCommitDraft,
+  GitCommitResult,
+  GitCreateBranchInput,
+  GitCreateCommitInput,
   GitDiffRequest,
   GitDiffResult,
+  GitPullRequestPrep,
   GitReviewSnapshot,
   PersistedSessionPayload,
   PersistedSessionSummary,
@@ -46,6 +52,12 @@ export const listAvailableModels = (config: AppConfig): Promise<ModelCatalogResu
 export const getGitReview = (): Promise<GitReviewSnapshot> => requireDesktopApi().getGitReview();
 export const getGitDiff = (request: GitDiffRequest): Promise<GitDiffResult> =>
   requireDesktopApi().getGitDiff(request);
+export const draftGitCommit = (): Promise<GitCommitDraft> => requireDesktopApi().draftGitCommit();
+export const createGitBranch = (input: GitCreateBranchInput): Promise<GitBranchResult> =>
+  requireDesktopApi().createGitBranch(input);
+export const createGitCommit = (input: GitCreateCommitInput): Promise<GitCommitResult> =>
+  requireDesktopApi().createGitCommit(input);
+export const prepareGitPullRequest = (): Promise<GitPullRequestPrep> => requireDesktopApi().prepareGitPullRequest();
 export const listSessions = (): Promise<PersistedSessionSummary[]> => requireDesktopApi().listSessions();
 export const loadSession = (sessionId: string): Promise<PersistedSessionPayload | null> =>
   requireDesktopApi().loadSession(sessionId);

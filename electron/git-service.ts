@@ -1,5 +1,18 @@
 import { execFile } from 'node:child_process';
-import type { GitChangeKind, GitChangedFile, GitDiffRequest, GitDiffResult, GitReviewSnapshot } from '../shared/contracts';
+import path from 'node:path';
+import type {
+  GitBranchResult,
+  GitChangeKind,
+  GitChangedFile,
+  GitCommitDraft,
+  GitCommitResult,
+  GitCreateBranchInput,
+  GitCreateCommitInput,
+  GitDiffRequest,
+  GitDiffResult,
+  GitPullRequestPrep,
+  GitReviewSnapshot,
+} from '../shared/contracts';
 
 const MAX_DIFF_BYTES = 64 * 1024;
 const nowIso = (): string => new Date().toISOString();
@@ -62,6 +75,167 @@ const toChangeKind = (code: string): GitChangeKind | undefined => {
     default:
       return code === '.' || code === ' ' ? undefined : 'unknown';
   }
+};
+
+const toTitleCase = (value: string): string => value.charAt(0).toUpperCase() + value.slice(1);
+
+const formatList = (items: string[]): string => {
+  if (items.length === 0) {
+    return '';
+  }
+
+  if (items.length === 1) {
+    return items[0];
+  }
+
+  if (items.length === 2) {
+    return `${items[0]} and ${items[1]}`;
+  }
+
+  return `${items.slice(0, -1).join(', ')}, and ${items.at(-1)}`;
+};
+
+const getTopLevelScope = (filePath: string): string => {
+  const normalized = filePath.replace(/\\/g, '/');
+  const segments = normalized.split('/');
+  if (segments.length <= 1) {
+    const basename = path.posix.basename(normalized);
+    const stem = basename.replace(/\.[^.]+$/, '');
+    return stem || 'workspace';
+  }
+
+  return segments[0] || 'workspace';
+};
+
+const describePathScope = (paths: string[]): string => {
+  if (paths.length === 0) {
+    return 'workspace files';
+  }
+
+  if (paths.length === 1) {
+    return path.posix.basename(paths[0]);
+  }
+
+  const scopes = [...new Set(paths.map(getTopLevelScope))].filter(Boolean);
+  if (scopes.length > 0 && scopes.length <= 3) {
+    return `${formatList(scopes)} workflows`;
+  }
+
+  return 'workspace files';
+};
+
+const getDominantVerb = (files: GitChangedFile[]): string => {
+  const counts = new Map<GitChangeKind, number>();
+
+  for (const file of files) {
+    const kind = file.stagedKind ?? file.unstagedKind ?? 'unknown';
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+
+  const dominantKind = [...counts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0];
+
+  switch (dominantKind) {
+    case 'added':
+    case 'untracked':
+      return 'add';
+    case 'deleted':
+      return 'remove';
+    case 'renamed':
+      return 'rename';
+    case 'conflicted':
+      return 'resolve';
+    default:
+      return 'update';
+  }
+};
+
+const getRelevantFiles = (snapshot: GitReviewSnapshot): GitChangedFile[] => {
+  const preferred = snapshot.stagedFiles.length > 0 ? snapshot.stagedFiles : snapshot.unstagedFiles;
+  if (preferred.length > 0) {
+    return preferred;
+  }
+
+  return [...snapshot.stagedFiles, ...snapshot.unstagedFiles].filter(
+    (file, index, files) => files.findIndex((candidate) => candidate.path === file.path) === index,
+  );
+};
+
+export const buildCommitDraftFromSnapshot = (snapshot: GitReviewSnapshot): GitCommitDraft => {
+  const files = getRelevantFiles(snapshot);
+  const paths = files.map((file) => file.path);
+  const verb = getDominantVerb(files);
+  const target = describePathScope(paths);
+  const message = `${toTitleCase(verb)} ${target}`.trim();
+
+  return {
+    message,
+    summary:
+      files.length > 0
+        ? `Drafted from ${files.length} ${snapshot.stagedFiles.length > 0 ? 'staged' : 'changed'} file${files.length === 1 ? '' : 's'}.`
+        : 'No changes detected yet.',
+    generatedAt: nowIso(),
+  };
+};
+
+export const toSuggestedBranchName = (message: string): string => {
+  const slug = message
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+
+  return `codex/${slug || 'workspace-update'}`;
+};
+
+export const buildPullRequestPrep = (input: {
+  snapshot: GitReviewSnapshot;
+  commitDraft: GitCommitDraft;
+  commitSummaries: string[];
+  diffStat: string;
+  warning?: string;
+}): GitPullRequestPrep => {
+  const relevantFiles = getRelevantFiles(input.snapshot);
+  const paths = relevantFiles.map((file) => file.path);
+  const scope = describePathScope(paths);
+  const summary = [
+    `${input.commitDraft.message}.`,
+    relevantFiles.length > 0
+      ? `Touches ${scope} across ${relevantFiles.length} file${relevantFiles.length === 1 ? '' : 's'}.`
+      : 'No changed files are currently available in the workspace snapshot.',
+    input.snapshot.latestCommitSummary
+      ? `Latest local commit: ${input.snapshot.latestCommitSummary}.`
+      : 'No local commits are available yet.',
+  ];
+  const testingChecklist = ['npm run test', 'npm run build', 'npm run dist'];
+  const body = [
+    '## Summary',
+    ...summary.map((item) => `- ${item}`),
+    '',
+    '## Testing',
+    ...testingChecklist.map((item) => `- [ ] ${item}`),
+    '',
+    '## Commit Context',
+    ...(input.commitSummaries.length > 0 ? input.commitSummaries.map((item) => `- ${item}`) : ['- No branch-specific commits detected yet.']),
+    '',
+    '## Diff Stat',
+    '```text',
+    input.diffStat || 'No diff stat available.',
+    '```',
+  ].join('\n');
+
+  return {
+    branch: input.snapshot.branch,
+    upstream: input.snapshot.upstream,
+    suggestedTitle: input.commitDraft.message,
+    suggestedBranchName: toSuggestedBranchName(input.commitDraft.message),
+    summary,
+    testingChecklist,
+    commitSummaries: input.commitSummaries,
+    diffStat: input.diffStat,
+    body,
+    generatedAt: nowIso(),
+    warning: input.warning,
+  };
 };
 
 type ParsedReviewSnapshot = Omit<GitReviewSnapshot, 'generatedAt' | 'available'> & {
@@ -152,6 +326,7 @@ export const parseGitStatusPorcelain = (input: string): ParsedReviewSnapshot => 
       if (!filePath) {
         continue;
       }
+
       files.set(filePath, {
         path: filePath,
         stagedKind: 'conflicted',
@@ -215,12 +390,12 @@ export class GitService {
   public async getReviewSnapshot(): Promise<GitReviewSnapshot> {
     const insideWorkTree = await execGit(['rev-parse', '--is-inside-work-tree'], this.workspaceRoot);
     if (insideWorkTree.exitCode !== 0 || !insideWorkTree.stdout.trim().includes('true')) {
-    return {
-      available: false,
-      branch: null,
-      upstream: null,
-      latestCommitSummary: null,
-      ahead: 0,
+      return {
+        available: false,
+        branch: null,
+        upstream: null,
+        latestCommitSummary: null,
+        ahead: 0,
         behind: 0,
         stagedCount: 0,
         unstagedCount: 0,
@@ -236,9 +411,10 @@ export class GitService {
     if (statusResult.exitCode !== 0) {
       throw new Error(statusResult.stderr.trim() || 'Unable to inspect git status.');
     }
-    const latestCommitResult = await execGit(['log', '-1', '--pretty=format:%h %s'], this.workspaceRoot);
 
+    const latestCommitResult = await execGit(['log', '-1', '--pretty=format:%h %s'], this.workspaceRoot);
     const parsed = parseGitStatusPorcelain(statusResult.stdout);
+
     return {
       ...parsed,
       latestCommitSummary: latestCommitResult.exitCode === 0 ? latestCommitResult.stdout.trim() || null : null,
@@ -264,5 +440,138 @@ export class GitService {
       truncated,
       generatedAt: nowIso(),
     };
+  }
+
+  public async draftCommitMessage(): Promise<GitCommitDraft> {
+    const snapshot = await this.getReviewSnapshot();
+    if (!snapshot.available) {
+      throw new Error('Git repository unavailable.');
+    }
+
+    return buildCommitDraftFromSnapshot(snapshot);
+  }
+
+  public async createOrSwitchBranch(input: GitCreateBranchInput): Promise<GitBranchResult> {
+    const name = input.name.trim();
+    if (!name) {
+      throw new Error('Branch name is required.');
+    }
+
+    const previousBranch = await this.getCurrentBranchName();
+    const branchExists = await execGit(['rev-parse', '--verify', `refs/heads/${name}`], this.workspaceRoot);
+
+    if (branchExists.exitCode === 0) {
+      const switchResult = await execGit(['switch', name], this.workspaceRoot);
+      if (switchResult.exitCode !== 0) {
+        throw new Error(switchResult.stderr.trim() || `Unable to switch to ${name}.`);
+      }
+
+      return {
+        branch: name,
+        previousBranch,
+        created: false,
+        switchedAt: nowIso(),
+      };
+    }
+
+    const args = ['switch', '-c', name];
+    if (input.fromRef?.trim()) {
+      args.push(input.fromRef.trim());
+    }
+
+    const createResult = await execGit(args, this.workspaceRoot);
+    if (createResult.exitCode !== 0) {
+      throw new Error(createResult.stderr.trim() || `Unable to create branch ${name}.`);
+    }
+
+    return {
+      branch: name,
+      previousBranch,
+      created: true,
+      switchedAt: nowIso(),
+    };
+  }
+
+  public async createCommit(input: GitCreateCommitInput): Promise<GitCommitResult> {
+    const message = input.message.trim();
+    if (!message) {
+      throw new Error('Commit message is required.');
+    }
+
+    const snapshot = await this.getReviewSnapshot();
+    if (!snapshot.available) {
+      throw new Error('Git repository unavailable.');
+    }
+
+    if (snapshot.stagedCount === 0) {
+      throw new Error('Stage changes before creating a commit.');
+    }
+
+    const commitResult = await execGit(['commit', '-m', message], this.workspaceRoot);
+    if (commitResult.exitCode !== 0) {
+      throw new Error(commitResult.stderr.trim() || commitResult.stdout.trim() || 'Unable to create commit.');
+    }
+
+    const summaryResult = await execGit(['log', '-1', '--pretty=format:%H%n%h %s'], this.workspaceRoot);
+    if (summaryResult.exitCode !== 0) {
+      throw new Error(summaryResult.stderr.trim() || 'Commit was created, but its summary could not be loaded.');
+    }
+
+    const [hash = '', summary = message] = summaryResult.stdout.trim().split(/\r?\n/, 2);
+
+    return {
+      branch: await this.getCurrentBranchName(),
+      hash,
+      summary,
+      createdAt: nowIso(),
+    };
+  }
+
+  public async preparePullRequest(): Promise<GitPullRequestPrep> {
+    const snapshot = await this.getReviewSnapshot();
+    if (!snapshot.available) {
+      throw new Error('Git repository unavailable.');
+    }
+
+    const commitDraft = buildCommitDraftFromSnapshot(snapshot);
+    const range = snapshot.upstream ? `${snapshot.upstream}..HEAD` : null;
+    const commitLogResult = await execGit(
+      range ? ['log', '--pretty=format:%h %s', range] : ['log', '-5', '--pretty=format:%h %s'],
+      this.workspaceRoot,
+    );
+    const diffStatResult = await execGit(
+      range ? ['diff', '--stat', `${snapshot.upstream}...HEAD`] : ['diff', '--stat'],
+      this.workspaceRoot,
+    );
+    const commitSummaries =
+      commitLogResult.exitCode === 0
+        ? commitLogResult.stdout
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+        : [];
+    const diffStat = diffStatResult.exitCode === 0 ? diffStatResult.stdout.trim() || 'No diff stat available.' : 'No diff stat available.';
+
+    return buildPullRequestPrep({
+      snapshot,
+      commitDraft,
+      commitSummaries,
+      diffStat,
+      warning: snapshot.upstream ? undefined : 'No upstream branch is configured yet. This draft is based on the current local branch and working tree.',
+    });
+  }
+
+  private async getCurrentBranchName(): Promise<string | null> {
+    const branchResult = await execGit(['rev-parse', '--abbrev-ref', 'HEAD'], this.workspaceRoot);
+    if (branchResult.exitCode !== 0) {
+      return null;
+    }
+
+    const branch = branchResult.stdout.trim();
+    if (!branch || branch === 'HEAD') {
+      return '(detached)';
+    }
+
+    return branch;
   }
 }

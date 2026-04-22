@@ -6,6 +6,8 @@ import {
   CreateAutomationInput,
   CancelChatRequest,
   ChatStreamEvent,
+  GitCreateBranchInput,
+  GitCreateCommitInput,
   ResolveToolApprovalInput,
   ResetChatRequest,
   StartChatRequest,
@@ -94,6 +96,10 @@ const registerIpcHandlers = (): void => {
   ipcMain.handle('models:list', (_event, config) => llmService.listAvailableModels(config));
   ipcMain.handle('git:review', () => gitService.getReviewSnapshot());
   ipcMain.handle('git:diff', (_event, request) => gitService.getDiff(request));
+  ipcMain.handle('git:draft-commit', () => gitService.draftCommitMessage());
+  ipcMain.handle('git:create-branch', (_event, input: GitCreateBranchInput) => gitService.createOrSwitchBranch(input));
+  ipcMain.handle('git:create-commit', (_event, input: GitCreateCommitInput) => gitService.createCommit(input));
+  ipcMain.handle('git:prepare-pr', () => gitService.preparePullRequest());
   ipcMain.handle('sessions:list', async () => {
     const sessions = await sessionStore.loadAll();
     return sessions.map(toSessionSummary);
