@@ -5,6 +5,7 @@ import { AutomationPanel } from '@/components/AutomationPanel';
 import { ChatComposer } from '@/components/ChatComposer';
 import { MarkdownMessage } from '@/components/MarkdownMessage';
 import { PluginsPanel } from '@/components/PluginsPanel';
+import { ReviewPanel } from '@/components/ReviewPanel';
 import { SearchPanel } from '@/components/SearchPanel';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { TaskSwitcher } from '@/components/TaskSwitcher';
@@ -38,6 +39,12 @@ const sectionMeta = {
     title: 'Search sessions, automations, and artifacts',
     description:
       'A calmer index over everything we have generated or scheduled so far, without leaving the current workspace.',
+  },
+  review: {
+    kicker: 'Git Review',
+    title: 'Changed files, staged work, and diff previews',
+    description:
+      'Inspect the repository state from inside the workspace, including staged and unstaged files plus inline diff previews.',
   },
   plugins: {
     kicker: 'Plugins & Integrations',
@@ -179,6 +186,8 @@ export const ChatPanel = () => {
         return <SearchPanel />;
       case 'plugins':
         return <PluginsPanel />;
+      case 'review':
+        return <ReviewPanel />;
       case 'automations':
         return (
           <>

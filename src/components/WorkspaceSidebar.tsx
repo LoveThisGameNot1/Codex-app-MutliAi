@@ -29,6 +29,14 @@ const GridIcon = () => (
   </svg>
 );
 
+const ReviewIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={iconClassName}>
+    <path d="M4 5.5h16" />
+    <path d="M4 12h16" />
+    <path d="M4 18.5h10" />
+  </svg>
+);
+
 const ClockIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={iconClassName}>
     <circle cx="12" cy="12" r="8" />
@@ -65,6 +73,7 @@ const ChevronRightIcon = () => (
 const sectionDescriptions: Record<WorkspaceSection, string> = {
   chat: 'Current workspace chat',
   search: 'Search everything',
+  review: 'Review changed files',
   plugins: 'Provider and tool integrations',
   automations: 'Scheduled work and runs',
   settings: 'Runtime configuration',
@@ -116,6 +125,7 @@ export const WorkspaceSidebar = () => {
     badge?: string | null;
   }> = [
     { key: 'search', label: 'Search', icon: <SearchIcon /> },
+    { key: 'review', label: 'Review', icon: <ReviewIcon /> },
     { key: 'plugins', label: 'Plugins', icon: <GridIcon /> },
     {
       key: 'automations',

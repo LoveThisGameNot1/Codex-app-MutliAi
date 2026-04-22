@@ -14,6 +14,7 @@ import {
 import { AutomationService } from './automation-service';
 import { AutomationStore } from './automation-store';
 import { ConfigStore } from './config-store';
+import { GitService } from './git-service';
 import { LlmService } from './llm-service';
 import { SessionStore, toSessionSummary } from './session-store';
 import { TaskWorkspaceService } from './task-workspace-service';
@@ -26,6 +27,7 @@ const configStore = new ConfigStore();
 const sessionStore = new SessionStore(app.getPath('userData'));
 const automationStore = new AutomationStore(app.getPath('userData'));
 const llmService = new LlmService(workspaceRoot, sessionStore);
+const gitService = new GitService(workspaceRoot);
 const taskWorkspaceService = new TaskWorkspaceService(workspaceRoot, path.join(app.getPath('userData'), 'task-clones'));
 const emitChatEvent = (event: ChatStreamEvent): void => {
   mainWindow?.webContents.send('chat:event', event);
@@ -90,6 +92,8 @@ const registerIpcHandlers = (): void => {
   ipcMain.handle('config:get', () => configStore.get());
   ipcMain.handle('config:update', (_event, update: AppConfigUpdate) => configStore.update(update));
   ipcMain.handle('models:list', (_event, config) => llmService.listAvailableModels(config));
+  ipcMain.handle('git:review', () => gitService.getReviewSnapshot());
+  ipcMain.handle('git:diff', (_event, request) => gitService.getDiff(request));
   ipcMain.handle('sessions:list', async () => {
     const sessions = await sessionStore.loadAll();
     return sessions.map(toSessionSummary);

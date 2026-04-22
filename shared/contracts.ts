@@ -46,6 +46,16 @@ export type AutomationStatus = 'active' | 'paused';
 export type AutomationRunStatus = 'running' | 'completed' | 'failed';
 export type AutomationWeekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type TaskIsolationMode = 'workspace' | 'safe-clone';
+export type GitChangeKind =
+  | 'added'
+  | 'modified'
+  | 'deleted'
+  | 'renamed'
+  | 'copied'
+  | 'untracked'
+  | 'conflicted'
+  | 'type-changed'
+  | 'unknown';
 
 export type DesktopAppInfo = {
   name: string;
@@ -117,6 +127,45 @@ export type TaskCloneResult = {
   clonePath: string;
   sourcePath: string;
   createdAt: string;
+};
+
+export type GitChangedFile = {
+  path: string;
+  previousPath?: string;
+  stagedKind?: GitChangeKind;
+  unstagedKind?: GitChangeKind;
+  staged: boolean;
+  unstaged: boolean;
+  conflicted: boolean;
+};
+
+export type GitReviewSnapshot = {
+  available: boolean;
+  branch: string | null;
+  upstream: string | null;
+  latestCommitSummary: string | null;
+  ahead: number;
+  behind: number;
+  stagedCount: number;
+  unstagedCount: number;
+  conflictedCount: number;
+  summary: string;
+  stagedFiles: GitChangedFile[];
+  unstagedFiles: GitChangedFile[];
+  generatedAt: string;
+};
+
+export type GitDiffRequest = {
+  path: string;
+  staged: boolean;
+};
+
+export type GitDiffResult = {
+  path: string;
+  staged: boolean;
+  diff: string;
+  truncated: boolean;
+  generatedAt: string;
 };
 
 export type ChatMessage = {
@@ -354,6 +403,8 @@ export type DesktopApi = {
   updateAutomation: (input: UpdateAutomationInput) => Promise<AutomationRecord>;
   deleteAutomation: (automationId: string) => Promise<void>;
   runAutomation: (automationId: string) => Promise<AutomationRunRecord>;
+  getGitReview: () => Promise<GitReviewSnapshot>;
+  getGitDiff: (request: GitDiffRequest) => Promise<GitDiffResult>;
   createSafeTaskClone: (input: CreateSafeTaskCloneInput) => Promise<TaskCloneResult>;
   discardSafeTaskClone: (clonePath: string) => Promise<void>;
   startChat: (request: StartChatRequest) => Promise<void>;

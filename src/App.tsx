@@ -3,6 +3,7 @@ import { LayoutShell } from '@/components/LayoutShell';
 import { automationRuntime } from '@/services/automation-runtime';
 import { chatRuntime } from '@/services/chat-runtime';
 import { getConfig, getDesktopAppInfo } from '@/services/electron-api';
+import { gitRuntime } from '@/services/git-runtime';
 import { useAppStore } from '@/store/app-store';
 import { DEFAULT_BASE_URL, DEFAULT_MODEL, DEFAULT_PROVIDER_ID, DEFAULT_SYSTEM_PROMPT } from '../shared/contracts';
 import { DEFAULT_TOOL_POLICY } from '../shared/tool-policy';
@@ -14,6 +15,7 @@ const App = () => {
   useEffect(() => {
     chatRuntime.initialize();
     automationRuntime.initialize();
+    void gitRuntime.refreshReview();
 
     void getDesktopAppInfo().then(setAppInfo).catch(() => {
       setAppInfo(null);

@@ -53,8 +53,8 @@ Why this matters:
 
 ## Priority 4: Git And Review Center
 
-- [ ] Build a review panel for changed files, diffs, and commit summaries.
-- [ ] Add staged/unstaged visibility inside the app.
+- [x] Build a review panel for changed files, diffs, and commit summaries.
+- [x] Add staged/unstaged visibility inside the app.
 - [ ] Support commit drafting, branch creation, and PR prep from the UI.
 - [ ] Add a code-review mode that highlights risks, regressions, and missing tests.
 - [ ] Support inline review comments anchored to files and lines.
@@ -158,6 +158,7 @@ Why this matters:
 - Always verify with tests and builds after each meaningful change.
 - Keep local-first strengths intact instead of copying cloud-only product assumptions blindly.
 - When in doubt, prioritize safety and recoverability before adding more autonomy.
+
 
 
 

@@ -8,6 +8,7 @@ import type {
   ArtifactViewMode,
   ChatMessage,
   DesktopAppInfo,
+  GitReviewSnapshot,
   MessageStatus,
   MessageRole,
   PersistedSessionSummary,
@@ -38,7 +39,7 @@ const createId = (): string =>
 const createSessionId = (): string => createId();
 const MAX_ACKNOWLEDGED_AUTOMATION_RUN_IDS = 200;
 
-export type WorkspaceSection = 'chat' | 'search' | 'plugins' | 'automations' | 'settings';
+export type WorkspaceSection = 'chat' | 'search' | 'review' | 'plugins' | 'automations' | 'settings';
 
 const createDefaultTask = (workspaceSessionId: string): WorkspaceTask =>
   createWorkspaceTask({
@@ -62,6 +63,7 @@ export type AppState = {
   persistedSessions: PersistedSessionSummary[];
   automations: AutomationRecord[];
   automationRuns: AutomationRunRecord[];
+  gitReview: GitReviewSnapshot | null;
   acknowledgedAutomationRunIds: string[];
   composerValue: string;
   isStreaming: boolean;
@@ -91,6 +93,7 @@ export type AppState = {
   setPersistedSessions: (sessions: PersistedSessionSummary[]) => void;
   setAutomations: (automations: AutomationRecord[]) => void;
   setAutomationRuns: (runs: AutomationRunRecord[]) => void;
+  setGitReview: (review: GitReviewSnapshot | null) => void;
   acknowledgeAutomationRun: (runId: string) => void;
   acknowledgeAutomationRuns: (runIds: string[]) => void;
   loadPersistedConversation: (input: {
@@ -206,6 +209,7 @@ export const useAppStore = create<AppState>()(
         persistedSessions: [],
         automations: [],
         automationRuns: [],
+        gitReview: null,
         acknowledgedAutomationRunIds: [],
         composerValue: '',
         isStreaming: false,
@@ -304,6 +308,7 @@ export const useAppStore = create<AppState>()(
             acknowledgedAutomationRunIds: state.acknowledgedAutomationRunIds.filter((id) => knownRunIds.has(id)),
           };
         }),
+      setGitReview: (gitReview) => set({ gitReview }),
       acknowledgeAutomationRun: (runId) =>
         set((state) => ({
           acknowledgedAutomationRunIds: [runId, ...state.acknowledgedAutomationRunIds.filter((id) => id !== runId)].slice(
@@ -665,6 +670,7 @@ export const useAppStore = create<AppState>()(
         persistedSessions: state.persistedSessions,
         automations: state.automations,
         automationRuns: state.automationRuns,
+        gitReview: state.gitReview,
         acknowledgedAutomationRunIds: state.acknowledgedAutomationRunIds,
         composerValue: state.composerValue,
         settingsOpen: state.settingsOpen,

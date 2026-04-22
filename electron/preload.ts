@@ -10,6 +10,9 @@ import type {
   CreateSafeTaskCloneInput,
   CreateAutomationInput,
   DesktopApi,
+  GitDiffRequest,
+  GitDiffResult,
+  GitReviewSnapshot,
   PersistedSessionPayload,
   PersistedSessionSummary,
   ResetChatRequest,
@@ -24,6 +27,8 @@ const desktopApi: DesktopApi = {
   getConfig: (): Promise<AppConfig> => ipcRenderer.invoke('config:get'),
   updateConfig: (update: AppConfigUpdate): Promise<AppConfig> => ipcRenderer.invoke('config:update', update),
   listAvailableModels: (config: AppConfig) => ipcRenderer.invoke('models:list', config),
+  getGitReview: (): Promise<GitReviewSnapshot> => ipcRenderer.invoke('git:review'),
+  getGitDiff: (request: GitDiffRequest): Promise<GitDiffResult> => ipcRenderer.invoke('git:diff', request),
   listSessions: (): Promise<PersistedSessionSummary[]> => ipcRenderer.invoke('sessions:list'),
   loadSession: (sessionId: string): Promise<PersistedSessionPayload | null> =>
     ipcRenderer.invoke('sessions:load', sessionId),
