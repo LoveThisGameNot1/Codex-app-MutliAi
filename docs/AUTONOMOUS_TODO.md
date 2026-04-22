@@ -45,8 +45,8 @@ Why this matters:
 - [x] Add optional isolated execution modes for agent work, starting with per-task working directories.
 - [x] Create a “safe workspace clone” mode for risky operations.
 - [x] Add explicit UX showing whether the current run is operating in the live workspace or an isolated copy.
-- [ ] Add cleanup and retention rules for temporary workspaces.
-- [ ] Add tests covering isolation boundaries and file sync behavior.
+- [x] Add cleanup and retention rules for temporary workspaces.
+- [x] Add tests covering isolation boundaries and file sync behavior.
 
 Why this matters:
 - Codex-style sandboxes and worktrees are still a major gap.
@@ -158,6 +158,7 @@ Why this matters:
 - Always verify with tests and builds after each meaningful change.
 - Keep local-first strengths intact instead of copying cloud-only product assumptions blindly.
 - When in doubt, prioritize safety and recoverability before adding more autonomy.
+
 
 
 

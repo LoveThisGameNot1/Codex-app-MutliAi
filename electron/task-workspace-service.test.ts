@@ -65,4 +65,80 @@ describe('TaskWorkspaceService', () => {
     await service.discardSafeClone(result.clonePath);
     await expect(fs.stat(result.clonePath)).rejects.toMatchObject({ code: 'ENOENT' });
   });
+
+  it('keeps clone file edits isolated from the live workspace', async () => {
+    const workspaceRoot = await createTempDir('codexapp-clone-workspace-');
+    const clonesRoot = await createTempDir('codexapp-clone-targets-');
+    const sourceFile = path.join(workspaceRoot, 'src', 'isolated.ts');
+    await fs.mkdir(path.dirname(sourceFile), { recursive: true });
+    await fs.writeFile(sourceFile, 'export const mode = "live";', 'utf8');
+
+    const service = new TaskWorkspaceService(workspaceRoot, clonesRoot);
+    const result = await service.createSafeClone({
+      taskId: 'task-isolation',
+      sourcePath: null,
+    });
+
+    const cloneFile = path.join(result.clonePath, 'src', 'isolated.ts');
+    await fs.writeFile(cloneFile, 'export const mode = "clone";', 'utf8');
+
+    await expect(fs.readFile(cloneFile, 'utf8')).resolves.toContain('"clone"');
+    await expect(fs.readFile(sourceFile, 'utf8')).resolves.toContain('"live"');
+  });
+
+  it('prunes expired clones and retains only the freshest recent clones', async () => {
+    const workspaceRoot = await createTempDir('codexapp-clone-workspace-');
+    const clonesRoot = await createTempDir('codexapp-clone-targets-');
+    await fs.writeFile(path.join(workspaceRoot, 'index.ts'), 'export {};', 'utf8');
+    const service = new TaskWorkspaceService(workspaceRoot, clonesRoot);
+
+    const now = Date.parse('2026-04-22T12:00:00.000Z');
+    for (let index = 0; index < 10; index += 1) {
+      const clone = await service.createSafeClone({
+        taskId: `task-${index}`,
+        sourcePath: null,
+      });
+      await fs.writeFile(
+        path.join(clone.clonePath, '.codexapp-clone.json'),
+        JSON.stringify(
+          {
+            taskId: `task-${index}`,
+            sourcePath: workspaceRoot,
+            createdAt: new Date(now - index * 60_000).toISOString(),
+          },
+          null,
+          2,
+        ),
+        'utf8',
+      );
+    }
+
+    const staleClone = await service.createSafeClone({
+      taskId: 'task-stale',
+      sourcePath: null,
+    });
+    await fs.writeFile(
+      path.join(staleClone.clonePath, '.codexapp-clone.json'),
+      JSON.stringify(
+        {
+          taskId: 'task-stale',
+          sourcePath: workspaceRoot,
+          createdAt: '2026-04-10T12:00:00.000Z',
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    await service.pruneStaleClones(now);
+
+    const remainingEntries = await fs.readdir(clonesRoot, { withFileTypes: true });
+    const remainingDirectories = remainingEntries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+
+    expect(remainingDirectories).toHaveLength(8);
+    expect(remainingDirectories.some((entry) => entry.includes('task-stale'))).toBe(false);
+    expect(remainingDirectories.some((entry) => entry.includes('task-9'))).toBe(false);
+    expect(remainingDirectories.some((entry) => entry.includes('task-0'))).toBe(true);
+  });
 });

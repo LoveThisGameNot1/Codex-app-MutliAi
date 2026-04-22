@@ -130,6 +130,7 @@ const registerIpcHandlers = (): void => {
 app.whenReady().then(async () => {
   app.setAppUserModelId('com.codexapp.multiapis');
   registerIpcHandlers();
+  await taskWorkspaceService.pruneStaleClones();
   await automationService.initialize();
   await createWindow();
 

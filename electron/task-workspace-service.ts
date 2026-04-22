@@ -3,6 +3,9 @@ import path from 'node:path';
 import type { CreateSafeTaskCloneInput, TaskCloneResult } from '../shared/contracts';
 
 const EXCLUDED_NAMES = new Set(['.git', 'node_modules', 'dist', 'dist-electron', 'release', 'coverage']);
+const CLONE_METADATA_FILE = '.codexapp-clone.json';
+const MAX_CLONE_AGE_MS = 1000 * 60 * 60 * 24 * 3;
+const MAX_RETAINED_CLONES = 8;
 
 const nowIso = (): string => new Date().toISOString();
 
@@ -34,7 +37,7 @@ export class TaskWorkspaceService {
       filter: (entryPath) => this.shouldIncludeEntry(sourcePath, entryPath),
     });
     await fs.writeFile(
-      path.join(clonePath, '.codexapp-clone.json'),
+      path.join(clonePath, CLONE_METADATA_FILE),
       JSON.stringify(
         {
           taskId: input.taskId,
@@ -52,6 +55,37 @@ export class TaskWorkspaceService {
       sourcePath,
       createdAt: nowIso(),
     };
+  }
+
+  public async pruneStaleClones(referenceTime = Date.now()): Promise<void> {
+    await fs.mkdir(this.clonesRoot, { recursive: true });
+    const entries = await fs.readdir(this.clonesRoot, { withFileTypes: true });
+    const cloneEntries = await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory())
+        .map(async (entry) => {
+          const clonePath = path.join(this.clonesRoot, entry.name);
+          const metadata = await this.readCloneMetadata(clonePath);
+          const createdAtTime = metadata?.createdAt ? Date.parse(metadata.createdAt) : Number.NaN;
+          const sortTime = Number.isFinite(createdAtTime)
+            ? createdAtTime
+            : (await fs.stat(clonePath)).mtimeMs;
+          return {
+            clonePath,
+            createdAtTime: sortTime,
+            isExpired: referenceTime - sortTime > MAX_CLONE_AGE_MS,
+          };
+        }),
+    );
+
+    const staleClones = cloneEntries.filter((entry) => entry.isExpired);
+    await Promise.all(staleClones.map((entry) => this.discardSafeClone(entry.clonePath)));
+
+    const retainedCandidates = cloneEntries
+      .filter((entry) => !entry.isExpired)
+      .sort((left, right) => right.createdAtTime - left.createdAtTime);
+    const overflowClones = retainedCandidates.slice(MAX_RETAINED_CLONES);
+    await Promise.all(overflowClones.map((entry) => this.discardSafeClone(entry.clonePath)));
   }
 
   public async discardSafeClone(clonePath: string): Promise<void> {
@@ -88,5 +122,14 @@ export class TaskWorkspaceService {
     }
 
     return !EXCLUDED_NAMES.has(path.basename(entryPath));
+  }
+
+  private async readCloneMetadata(clonePath: string): Promise<{ createdAt?: string } | null> {
+    try {
+      const raw = await fs.readFile(path.join(clonePath, CLONE_METADATA_FILE), 'utf8');
+      return JSON.parse(raw) as { createdAt?: string };
+    } catch {
+      return null;
+    }
   }
 }
