@@ -1,7 +1,9 @@
 import type { ArtifactRecord, ChatStreamEvent } from '../../shared/contracts';
 import {
   cancelChat,
+  createSafeTaskClone,
   deleteSession,
+  discardSafeTaskClone,
   listSessions,
   loadSession,
   onChatEvent,
@@ -177,7 +179,10 @@ export class ChatRuntime {
       title: input.title,
       parentTaskId: input.parentTaskId,
       scopeSummary: input.scopeSummary,
+      isolationMode: parentTask.isolationMode,
       workingDirectory: parentTask.workingDirectory,
+      liveWorkingDirectory: parentTask.liveWorkingDirectory,
+      safeClonePath: parentTask.safeClonePath,
     });
     state.addSystemMessage(
       input.parentTaskId,
@@ -185,6 +190,39 @@ export class ChatRuntime {
     );
     state.setActiveTaskId(taskId);
     await this.startTaskMessage(taskId, input.prompt);
+  }
+
+  public async activateSafeClone(taskId: string): Promise<void> {
+    const state = useAppStore.getState();
+    const task = state.workspaceTasks.find((item) => item.id === taskId);
+    if (!task || task.requestId || task.isolationMode === 'safe-clone') {
+      return;
+    }
+
+    const clone = await createSafeTaskClone({
+      taskId,
+      sourcePath: task.liveWorkingDirectory ?? task.workingDirectory,
+    });
+    state.activateTaskSafeClone(taskId, clone);
+    state.addSystemMessage(
+      taskId,
+      `Safe clone created at ${clone.clonePath}. This task now runs inside an isolated copy of ${clone.sourcePath}.`,
+    );
+  }
+
+  public async returnTaskToWorkspace(taskId: string): Promise<void> {
+    const state = useAppStore.getState();
+    const task = state.workspaceTasks.find((item) => item.id === taskId);
+    if (!task || task.requestId || task.isolationMode !== 'safe-clone' || !task.safeClonePath) {
+      return;
+    }
+
+    await discardSafeTaskClone(task.safeClonePath);
+    state.deactivateTaskSafeClone(taskId);
+    state.addSystemMessage(
+      taskId,
+      'Safe clone discarded. This task now runs against the live workspace again.',
+    );
   }
 
   public async resetConversation(): Promise<void> {

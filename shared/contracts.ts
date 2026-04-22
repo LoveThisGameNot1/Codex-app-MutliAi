@@ -45,6 +45,7 @@ export type ToolApprovalDecision = 'approve' | 'reject';
 export type AutomationStatus = 'active' | 'paused';
 export type AutomationRunStatus = 'running' | 'completed' | 'failed';
 export type AutomationWeekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+export type TaskIsolationMode = 'workspace' | 'safe-clone';
 
 export type DesktopAppInfo = {
   name: string;
@@ -105,6 +106,17 @@ export type ResolveToolApprovalInput = {
   approvalId: string;
   decision: ToolApprovalDecision;
   scope?: ToolApprovalScope;
+};
+
+export type CreateSafeTaskCloneInput = {
+  taskId: string;
+  sourcePath?: string | null;
+};
+
+export type TaskCloneResult = {
+  clonePath: string;
+  sourcePath: string;
+  createdAt: string;
 };
 
 export type ChatMessage = {
@@ -342,6 +354,8 @@ export type DesktopApi = {
   updateAutomation: (input: UpdateAutomationInput) => Promise<AutomationRecord>;
   deleteAutomation: (automationId: string) => Promise<void>;
   runAutomation: (automationId: string) => Promise<AutomationRunRecord>;
+  createSafeTaskClone: (input: CreateSafeTaskCloneInput) => Promise<TaskCloneResult>;
+  discardSafeTaskClone: (clonePath: string) => Promise<void>;
   startChat: (request: StartChatRequest) => Promise<void>;
   cancelChat: (request: CancelChatRequest) => Promise<void>;
   resetChat: (request: ResetChatRequest) => Promise<void>;

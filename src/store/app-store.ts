@@ -11,6 +11,8 @@ import type {
   MessageStatus,
   MessageRole,
   PersistedSessionSummary,
+  TaskIsolationMode,
+  TaskCloneResult,
   ToolApprovalDecision,
   ToolApprovalRequestRecord,
   ToolApprovalScope,
@@ -77,10 +79,15 @@ export type AppState = {
     title?: string;
     parentTaskId?: string | null;
     scopeSummary?: string | null;
+    isolationMode?: TaskIsolationMode;
     workingDirectory?: string | null;
+    liveWorkingDirectory?: string | null;
+    safeClonePath?: string | null;
   }) => string;
   setActiveTaskId: (taskId: string) => void;
   updateTaskWorkingDirectory: (taskId: string, workingDirectory: string | null) => void;
+  activateTaskSafeClone: (taskId: string, clone: TaskCloneResult) => void;
+  deactivateTaskSafeClone: (taskId: string) => void;
   setPersistedSessions: (sessions: PersistedSessionSummary[]) => void;
   setAutomations: (automations: AutomationRecord[]) => void;
   setAutomationRuns: (runs: AutomationRunRecord[]) => void;
@@ -233,7 +240,10 @@ export const useAppStore = create<AppState>()(
               title: input?.title,
               parentTaskId: input?.parentTaskId,
               scopeSummary: input?.scopeSummary,
+              isolationMode: input?.isolationMode,
               workingDirectory: input?.workingDirectory,
+              liveWorkingDirectory: input?.liveWorkingDirectory,
+              safeClonePath: input?.safeClonePath,
             });
             const workspaceTasks = [task, ...state.workspaceTasks];
             return {
@@ -255,7 +265,32 @@ export const useAppStore = create<AppState>()(
           set((state) => ({
             workspaceTasks: updateTaskCollection(state.workspaceTasks, taskId, (task) => ({
               ...task,
-              workingDirectory: workingDirectory?.trim() || null,
+              workingDirectory:
+                task.isolationMode === 'safe-clone'
+                  ? task.workingDirectory
+                  : workingDirectory?.trim() || null,
+              liveWorkingDirectory: workingDirectory?.trim() || null,
+              updatedAt: nowIso(),
+            })),
+          })),
+        activateTaskSafeClone: (taskId, clone) =>
+          set((state) => ({
+            workspaceTasks: updateTaskCollection(state.workspaceTasks, taskId, (task) => ({
+              ...task,
+              isolationMode: 'safe-clone',
+              safeClonePath: clone.clonePath,
+              liveWorkingDirectory: clone.sourcePath,
+              workingDirectory: clone.clonePath,
+              updatedAt: nowIso(),
+            })),
+          })),
+        deactivateTaskSafeClone: (taskId) =>
+          set((state) => ({
+            workspaceTasks: updateTaskCollection(state.workspaceTasks, taskId, (task) => ({
+              ...task,
+              isolationMode: 'workspace',
+              safeClonePath: null,
+              workingDirectory: task.liveWorkingDirectory,
               updatedAt: nowIso(),
             })),
           })),

@@ -16,6 +16,7 @@ import { AutomationStore } from './automation-store';
 import { ConfigStore } from './config-store';
 import { LlmService } from './llm-service';
 import { SessionStore, toSessionSummary } from './session-store';
+import { TaskWorkspaceService } from './task-workspace-service';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,6 +26,7 @@ const configStore = new ConfigStore();
 const sessionStore = new SessionStore(app.getPath('userData'));
 const automationStore = new AutomationStore(app.getPath('userData'));
 const llmService = new LlmService(workspaceRoot, sessionStore);
+const taskWorkspaceService = new TaskWorkspaceService(workspaceRoot, path.join(app.getPath('userData'), 'task-clones'));
 const emitChatEvent = (event: ChatStreamEvent): void => {
   mainWindow?.webContents.send('chat:event', event);
 };
@@ -102,6 +104,10 @@ const registerIpcHandlers = (): void => {
   ipcMain.handle('automations:update', (_event, input: UpdateAutomationInput) => automationService.updateAutomation(input));
   ipcMain.handle('automations:delete', (_event, automationId: string) => automationService.deleteAutomation(automationId));
   ipcMain.handle('automations:run', (_event, automationId: string) => automationService.runAutomationNow(automationId));
+  ipcMain.handle('task-workspaces:create-safe-clone', (_event, input) => taskWorkspaceService.createSafeClone(input));
+  ipcMain.handle('task-workspaces:discard-safe-clone', (_event, clonePath: string) =>
+    taskWorkspaceService.discardSafeClone(clonePath),
+  );
 
   ipcMain.handle('chat:start', async (_event, request: StartChatRequest) => {
     await llmService.startChat(request, emitChatEvent);

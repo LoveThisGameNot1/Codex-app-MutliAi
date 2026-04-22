@@ -7,6 +7,7 @@ import type {
   AutomationRunRecord,
   CancelChatRequest,
   ChatStreamEvent,
+  CreateSafeTaskCloneInput,
   CreateAutomationInput,
   DesktopAppInfo,
   PersistedSessionPayload,
@@ -14,6 +15,7 @@ import type {
   ResetChatRequest,
   ResolveToolApprovalInput,
   StartChatRequest,
+  TaskCloneResult,
   UpdateAutomationInput,
 } from '../../shared/contracts';
 
@@ -51,6 +53,10 @@ export const updateAutomation = (input: UpdateAutomationInput): Promise<Automati
 export const deleteAutomation = (automationId: string): Promise<void> => requireDesktopApi().deleteAutomation(automationId);
 export const runAutomation = (automationId: string): Promise<AutomationRunRecord> =>
   requireDesktopApi().runAutomation(automationId);
+export const createSafeTaskClone = (input: CreateSafeTaskCloneInput): Promise<TaskCloneResult> =>
+  requireDesktopApi().createSafeTaskClone(input);
+export const discardSafeTaskClone = (clonePath: string): Promise<void> =>
+  requireDesktopApi().discardSafeTaskClone(clonePath);
 export const startChat = (request: StartChatRequest): Promise<void> => requireDesktopApi().startChat(request);
 export const cancelChat = (request: CancelChatRequest): Promise<void> => requireDesktopApi().cancelChat(request);
 export const resetChat = (request: ResetChatRequest): Promise<void> => requireDesktopApi().resetChat(request);

@@ -85,7 +85,11 @@ export const ChatComposer = () => {
             `Enter` sends, `Shift + Enter` inserts a newline. Tools run in the Electron main process.
           </p>
           <p className="text-xs text-slate-500">
-            Active task working directory: <span className="text-slate-300">{activeTask?.workingDirectory || 'workspace root'}</span>
+            Active task mode:{' '}
+            <span className="text-slate-300">
+              {activeTask?.isolationMode === 'safe-clone' ? 'safe clone' : 'live workspace'}
+            </span>{' '}
+            in <span className="text-slate-300">{activeTask?.workingDirectory || 'workspace root'}</span>
           </p>
           {!selectedModelCapabilities.recommendedForAgent ? (
             <p className="text-xs text-amber-200/80">

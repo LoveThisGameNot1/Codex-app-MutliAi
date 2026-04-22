@@ -11,6 +11,11 @@ const statusTone: Record<string, string> = {
   completed: 'border-violet-300/30 bg-violet-300/10 text-violet-100',
 };
 
+const isolationTone: Record<string, string> = {
+  workspace: 'border-slate-400/20 bg-slate-400/10 text-slate-200',
+  'safe-clone': 'border-amber-300/30 bg-amber-300/10 text-amber-100',
+};
+
 export const TaskSwitcher = () => {
   const workspaceTasks = useAppStore((state) => state.workspaceTasks);
   const activeTaskId = useAppStore((state) => state.activeTaskId);
@@ -51,9 +56,14 @@ export const TaskSwitcher = () => {
             >
               <div className="flex items-start justify-between gap-2">
                 <p className="line-clamp-2 text-sm font-medium text-white">{task.title}</p>
-                <span className={cn('rounded-full border px-2.5 py-1 text-[11px] uppercase tracking-[0.18em]', statusTone[task.status])}>
-                  {task.status}
-                </span>
+                <div className="flex flex-col items-end gap-2">
+                  <span className={cn('rounded-full border px-2.5 py-1 text-[11px] uppercase tracking-[0.18em]', statusTone[task.status])}>
+                    {task.status}
+                  </span>
+                  <span className={cn('rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.18em]', isolationTone[task.isolationMode])}>
+                    {task.isolationMode === 'safe-clone' ? 'safe clone' : 'live workspace'}
+                  </span>
+                </div>
               </div>
               {task.scopeSummary ? (
                 <p className="mt-2 text-[11px] uppercase tracking-[0.18em] text-sky-200/80">
@@ -85,22 +95,48 @@ export const TaskSwitcher = () => {
             {activeTaskId === task.id ? (
               <div className="mt-3 space-y-2 rounded-2xl border border-white/10 bg-slate-950/60 p-3">
                 <label className="block text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                  Task Working Directory
+                  Live Working Directory
                 </label>
                 <input
                   type="text"
-                  value={task.workingDirectory ?? ''}
+                  value={task.liveWorkingDirectory ?? ''}
                   onChange={(event) => updateTaskWorkingDirectory(task.id, event.target.value)}
                   placeholder="Workspace root"
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 outline-none transition focus:border-sky-400/40"
+                  disabled={Boolean(task.requestId)}
+                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 outline-none transition focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-60"
                 />
                 <button
                   type="button"
+                  disabled={Boolean(task.requestId)}
                   onClick={() => updateTaskWorkingDirectory(task.id, null)}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-slate-300 transition hover:bg-white/10"
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Use Workspace Root
                 </button>
+                {task.isolationMode === 'safe-clone' ? (
+                  <>
+                    <p className="text-[11px] leading-5 text-amber-100/80">
+                      Clone path: {task.safeClonePath}
+                    </p>
+                    <button
+                      type="button"
+                      disabled={Boolean(task.requestId)}
+                      onClick={() => void chatRuntime.returnTaskToWorkspace(task.id)}
+                      className="rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-amber-100 transition hover:bg-amber-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Return To Live Workspace
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={Boolean(task.requestId)}
+                    onClick={() => void chatRuntime.activateSafeClone(task.id)}
+                    className="rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-amber-100 transition hover:bg-amber-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Create Safe Clone
+                  </button>
+                )}
               </div>
             ) : null}
           </article>

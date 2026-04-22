@@ -1,3 +1,5 @@
+import type { TaskIsolationMode } from '../../shared/contracts';
+
 export type WorkspaceTaskStatus = 'idle' | 'queued' | 'running' | 'blocked' | 'failed' | 'completed';
 
 export type WorkspaceTask = {
@@ -6,7 +8,10 @@ export type WorkspaceTask = {
   title: string;
   parentTaskId: string | null;
   scopeSummary: string | null;
+  isolationMode: TaskIsolationMode;
   workingDirectory: string | null;
+  liveWorkingDirectory: string | null;
+  safeClonePath: string | null;
   status: WorkspaceTaskStatus;
   createdAt: string;
   updatedAt: string;
@@ -31,17 +36,27 @@ export const createWorkspaceTask = (input: {
   title?: string;
   parentTaskId?: string | null;
   scopeSummary?: string | null;
+  isolationMode?: TaskIsolationMode;
   workingDirectory?: string | null;
+  liveWorkingDirectory?: string | null;
+  safeClonePath?: string | null;
   createdAt?: string;
 }): WorkspaceTask => {
   const timestamp = input.createdAt ?? nowIso();
+  const liveWorkingDirectory = input.liveWorkingDirectory?.trim() || input.workingDirectory?.trim() || null;
   return {
     id: input.id,
     sessionId: `${input.workspaceSessionId}:task:${input.id}`,
     title: input.title?.trim() || 'New task',
     parentTaskId: input.parentTaskId ?? null,
     scopeSummary: input.scopeSummary?.trim() || null,
-    workingDirectory: input.workingDirectory?.trim() || null,
+    isolationMode: input.isolationMode ?? 'workspace',
+    workingDirectory:
+      input.isolationMode === 'safe-clone'
+        ? input.safeClonePath?.trim() || input.workingDirectory?.trim() || null
+        : liveWorkingDirectory,
+    liveWorkingDirectory,
+    safeClonePath: input.safeClonePath?.trim() || null,
     status: 'idle',
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -144,7 +159,13 @@ export const recoverWorkspaceGraph = (input: RecoverWorkspaceGraphInput): Recove
     return {
       ...task,
       parentTaskId: task.parentTaskId && taskMap.has(task.parentTaskId) ? task.parentTaskId : null,
-      workingDirectory: task.workingDirectory?.trim() || null,
+      isolationMode: task.isolationMode ?? 'workspace',
+      liveWorkingDirectory: task.liveWorkingDirectory?.trim() || task.workingDirectory?.trim() || null,
+      safeClonePath: task.safeClonePath?.trim() || null,
+      workingDirectory:
+        (task.isolationMode ?? 'workspace') === 'safe-clone'
+          ? task.safeClonePath?.trim() || task.workingDirectory?.trim() || null
+          : task.liveWorkingDirectory?.trim() || task.workingDirectory?.trim() || null,
       title:
         task.title.trim() && !task.title.startsWith('Recovered task')
           ? task.title

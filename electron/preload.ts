@@ -7,6 +7,7 @@ import type {
   AutomationRunRecord,
   CancelChatRequest,
   ChatStreamEvent,
+  CreateSafeTaskCloneInput,
   CreateAutomationInput,
   DesktopApi,
   PersistedSessionPayload,
@@ -14,6 +15,7 @@ import type {
   ResetChatRequest,
   ResolveToolApprovalInput,
   StartChatRequest,
+  TaskCloneResult,
   UpdateAutomationInput,
 } from '../shared/contracts';
 
@@ -34,6 +36,10 @@ const desktopApi: DesktopApi = {
     ipcRenderer.invoke('automations:update', input),
   deleteAutomation: (automationId: string): Promise<void> => ipcRenderer.invoke('automations:delete', automationId),
   runAutomation: (automationId: string): Promise<AutomationRunRecord> => ipcRenderer.invoke('automations:run', automationId),
+  createSafeTaskClone: (input: CreateSafeTaskCloneInput): Promise<TaskCloneResult> =>
+    ipcRenderer.invoke('task-workspaces:create-safe-clone', input),
+  discardSafeTaskClone: (clonePath: string): Promise<void> =>
+    ipcRenderer.invoke('task-workspaces:discard-safe-clone', clonePath),
   startChat: (request: StartChatRequest): Promise<void> => ipcRenderer.invoke('chat:start', request),
   cancelChat: (request: CancelChatRequest): Promise<void> => ipcRenderer.invoke('chat:cancel', request),
   resetChat: (request: ResetChatRequest): Promise<void> => ipcRenderer.invoke('chat:reset', request),

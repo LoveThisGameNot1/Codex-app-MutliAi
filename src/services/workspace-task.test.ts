@@ -29,7 +29,10 @@ describe('workspace-task helpers', () => {
     expect(task.status).toBe('idle');
     expect(task.parentTaskId).toBe('task-root');
     expect(task.scopeSummary).toBe('Only inspect src/components');
+    expect(task.isolationMode).toBe('workspace');
     expect(task.workingDirectory).toBeNull();
+    expect(task.liveWorkingDirectory).toBeNull();
+    expect(task.safeClonePath).toBeNull();
   });
 
   it('stores a custom working directory per task', () => {
@@ -42,6 +45,25 @@ describe('workspace-task helpers', () => {
     });
 
     expect(task.workingDirectory).toBe('packages/desktop-app');
+    expect(task.liveWorkingDirectory).toBe('packages/desktop-app');
+  });
+
+  it('creates safe-clone tasks with separate live and clone paths', () => {
+    const task = createWorkspaceTask({
+      id: 'task-3',
+      workspaceSessionId: 'workspace-abc',
+      title: 'Safe clone',
+      isolationMode: 'safe-clone',
+      workingDirectory: 'packages/desktop-app',
+      liveWorkingDirectory: 'packages/desktop-app',
+      safeClonePath: 'C:\\temp\\clone-task-3',
+      createdAt: '2026-04-21T12:07:00.000Z',
+    });
+
+    expect(task.isolationMode).toBe('safe-clone');
+    expect(task.liveWorkingDirectory).toBe('packages/desktop-app');
+    expect(task.safeClonePath).toBe('C:\\temp\\clone-task-3');
+    expect(task.workingDirectory).toBe('C:\\temp\\clone-task-3');
   });
 
   it('derives global streaming state from task statuses', () => {
@@ -136,7 +158,10 @@ describe('workspace-task helpers', () => {
       status: 'failed',
       requestId: null,
       scopeSummary: 'Only inspect src/components',
+      isolationMode: 'workspace',
       workingDirectory: null,
+      liveWorkingDirectory: null,
+      safeClonePath: null,
       lastMessagePreview: 'Inspect the sidebar implementation and report risks.',
     });
 
@@ -157,7 +182,9 @@ describe('workspace-task helpers', () => {
         workspaceSessionId: 'workspace-abc',
         title: 'Child task',
         parentTaskId: 'missing-parent',
+        isolationMode: 'safe-clone',
         workingDirectory: 'apps/review-bot',
+        safeClonePath: 'C:\\temp\\clone-task-child',
         createdAt: '2026-04-21T12:11:00.000Z',
       }),
       status: 'running' as const,
@@ -176,7 +203,10 @@ describe('workspace-task helpers', () => {
     expect(result.workspaceTasks[0]).toMatchObject({
       id: 'task-child',
       parentTaskId: null,
-      workingDirectory: 'apps/review-bot',
+      isolationMode: 'safe-clone',
+      workingDirectory: 'C:\\temp\\clone-task-child',
+      liveWorkingDirectory: 'apps/review-bot',
+      safeClonePath: 'C:\\temp\\clone-task-child',
       status: 'failed',
       requestId: null,
     });
