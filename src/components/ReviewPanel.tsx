@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { GitChangedFile, GitCommitDraft, GitDiffResult, GitPullRequestPrep } from '../../shared/contracts';
-import { createGitBranch, createGitCommit, draftGitCommit, getGitDiff, prepareGitPullRequest } from '@/services/electron-api';
+import type { GitChangedFile, GitCodeReviewResult, GitCommitDraft, GitDiffResult, GitPullRequestPrep } from '../../shared/contracts';
+import { createGitBranch, createGitCommit, draftGitCommit, getGitDiff, prepareGitPullRequest, reviewGitChanges } from '@/services/electron-api';
 import { gitRuntime } from '@/services/git-runtime';
 import { useAppStore } from '@/store/app-store';
 import { cn } from '@/utils/cn';
@@ -94,12 +94,14 @@ export const ReviewPanel = () => {
   const [commitMessage, setCommitMessage] = useState('');
   const [branchName, setBranchName] = useState('');
   const [prPrep, setPrPrep] = useState<GitPullRequestPrep | null>(null);
+  const [codeReview, setCodeReview] = useState<GitCodeReviewResult | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
   const [branchLoading, setBranchLoading] = useState(false);
   const [commitLoading, setCommitLoading] = useState(false);
   const [prPrepLoading, setPrPrepLoading] = useState(false);
+  const [codeReviewLoading, setCodeReviewLoading] = useState(false);
 
   useEffect(() => {
     void gitRuntime.refreshReview();
@@ -235,6 +237,22 @@ export const ReviewPanel = () => {
       setActionError(error instanceof Error ? error.message : 'Unable to prepare a pull request draft.');
     } finally {
       setPrPrepLoading(false);
+    }
+  };
+
+  const handleRunCodeReview = async () => {
+    setCodeReviewLoading(true);
+    setActionError(null);
+    setActionNotice(null);
+
+    try {
+      const result = await reviewGitChanges();
+      setCodeReview(result);
+      setActionNotice('Code review heuristics refreshed from the current Git diff.');
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to run a code review pass.');
+    } finally {
+      setCodeReviewLoading(false);
     }
   };
 
@@ -399,6 +417,113 @@ export const ReviewPanel = () => {
 
       {actionError ? <div className="rounded-3xl border border-rose-300/20 bg-rose-300/10 px-4 py-3 text-sm text-rose-200">{actionError}</div> : null}
       {actionNotice ? <div className="rounded-3xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-200">{actionNotice}</div> : null}
+
+      <div className={sectionStyle}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-slate-100">Code Review Mode</p>
+            <p className="mt-1 text-sm text-slate-400">
+              Run a focused reviewer pass over the current Git diff to highlight risks, likely regressions, and missing test coverage.
+            </p>
+          </div>
+          <button type="button" onClick={() => void handleRunCodeReview()} className={actionButtonStyle} disabled={codeReviewLoading}>
+            {codeReviewLoading ? 'Reviewing...' : 'Run review'}
+          </button>
+        </div>
+
+        {codeReview ? (
+          <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(320px,0.55fr)_minmax(280px,0.45fr)]">
+            <div className="space-y-4">
+              <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
+                <p className="text-sm font-semibold text-slate-100">Findings</p>
+                <p className="mt-1 text-xs text-slate-500">{codeReview.summary}</p>
+                <div className="mt-4 space-y-3">
+                  {codeReview.findings.length === 0 ? (
+                    <p className="text-sm text-slate-400">No review findings were raised by the current heuristics.</p>
+                  ) : (
+                    codeReview.findings.map((finding) => (
+                      <div key={finding.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={cn(
+                              'rounded-full border px-2.5 py-1 text-[11px] uppercase tracking-[0.18em]',
+                              finding.severity === 'high'
+                                ? 'border-rose-300/30 bg-rose-300/10 text-rose-100'
+                                : finding.severity === 'medium'
+                                  ? 'border-amber-300/30 bg-amber-300/10 text-amber-100'
+                                  : 'border-sky-300/30 bg-sky-300/10 text-sky-100',
+                            )}
+                          >
+                            {finding.severity}
+                          </span>
+                          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] uppercase tracking-[0.18em] text-slate-300">
+                            {finding.category}
+                          </span>
+                        </div>
+                        <p className="mt-3 text-sm font-semibold text-slate-100">{finding.title}</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-300">{finding.summary}</p>
+                        {finding.filePath ? (
+                          <p className="mt-3 text-xs text-slate-500">
+                            {finding.filePath}
+                            {finding.startLine ? `:${finding.startLine}` : ''}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
+                <p className="text-sm font-semibold text-slate-100">Strengths</p>
+                <div className="mt-3 space-y-2">
+                  {codeReview.strengths.length === 0 ? (
+                    <p className="text-sm text-slate-500">No notable strengths were detected automatically yet.</p>
+                  ) : (
+                    codeReview.strengths.map((strength) => (
+                      <p key={strength} className="text-sm leading-6 text-slate-300">
+                        {strength}
+                      </p>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
+                <p className="text-sm font-semibold text-slate-100">Testing Gaps</p>
+                <div className="mt-3 space-y-2">
+                  {codeReview.testingGaps.length === 0 ? (
+                    <p className="text-sm text-slate-500">No obvious testing gaps were detected automatically.</p>
+                  ) : (
+                    codeReview.testingGaps.map((gap) => (
+                      <p key={gap} className="text-sm leading-6 text-slate-300">
+                        {gap}
+                      </p>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
+                <p className="text-sm font-semibold text-slate-100">Reviewed Files</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {codeReview.reviewedFiles.map((filePath) => (
+                    <span key={filePath} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+                      {filePath}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-3xl border border-dashed border-white/10 bg-black/10 p-4 text-sm text-slate-500">
+            No code review pass generated yet.
+          </div>
+        )}
+      </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(300px,0.45fr)_minmax(300px,0.55fr)]">
         <div className="grid gap-4">

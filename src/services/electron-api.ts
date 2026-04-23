@@ -11,6 +11,7 @@ import type {
   CreateAutomationInput,
   DesktopAppInfo,
   GitBranchResult,
+  GitCodeReviewResult,
   GitCommitDraft,
   GitCommitResult,
   GitCreateBranchInput,
@@ -58,6 +59,7 @@ export const createGitBranch = (input: GitCreateBranchInput): Promise<GitBranchR
 export const createGitCommit = (input: GitCreateCommitInput): Promise<GitCommitResult> =>
   requireDesktopApi().createGitCommit(input);
 export const prepareGitPullRequest = (): Promise<GitPullRequestPrep> => requireDesktopApi().prepareGitPullRequest();
+export const reviewGitChanges = (): Promise<GitCodeReviewResult> => requireDesktopApi().reviewGitChanges();
 export const listSessions = (): Promise<PersistedSessionSummary[]> => requireDesktopApi().listSessions();
 export const loadSession = (sessionId: string): Promise<PersistedSessionPayload | null> =>
   requireDesktopApi().loadSession(sessionId);

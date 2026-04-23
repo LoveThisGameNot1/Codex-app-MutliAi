@@ -211,6 +211,29 @@ export type GitPullRequestPrep = {
   warning?: string;
 };
 
+export type GitReviewFindingSeverity = 'high' | 'medium' | 'low';
+export type GitReviewFindingCategory = 'risk' | 'regression' | 'tests';
+
+export type GitReviewFinding = {
+  id: string;
+  title: string;
+  summary: string;
+  severity: GitReviewFindingSeverity;
+  category: GitReviewFindingCategory;
+  filePath?: string;
+  startLine?: number;
+  endLine?: number;
+};
+
+export type GitCodeReviewResult = {
+  summary: string;
+  findings: GitReviewFinding[];
+  strengths: string[];
+  testingGaps: string[];
+  reviewedFiles: string[];
+  generatedAt: string;
+};
+
 export type ChatMessage = {
   id: string;
   taskId?: string;
@@ -452,6 +475,7 @@ export type DesktopApi = {
   createGitBranch: (input: GitCreateBranchInput) => Promise<GitBranchResult>;
   createGitCommit: (input: GitCreateCommitInput) => Promise<GitCommitResult>;
   prepareGitPullRequest: () => Promise<GitPullRequestPrep>;
+  reviewGitChanges: () => Promise<GitCodeReviewResult>;
   createSafeTaskClone: (input: CreateSafeTaskCloneInput) => Promise<TaskCloneResult>;
   discardSafeTaskClone: (clonePath: string) => Promise<void>;
   startChat: (request: StartChatRequest) => Promise<void>;

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildCommitDraftFromSnapshot, buildPullRequestPrep, GitService, parseGitStatusPorcelain, toSuggestedBranchName } from './git-service';
+import { buildCodeReviewFromSnapshot, buildCommitDraftFromSnapshot, buildPullRequestPrep, GitService, parseGitStatusPorcelain, toSuggestedBranchName } from './git-service';
 
 const execGit = async (cwd: string, args: string[]): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -160,6 +160,77 @@ describe('git drafting helpers', () => {
     expect(prep.suggestedBranchName).toBe('codex/update-src-and-electron-workflows');
     expect(prep.body).toContain('## Summary');
     expect(prep.body).toContain('## Testing');
+  });
+
+  it('builds code review findings and testing gaps from changed files', () => {
+    const review = buildCodeReviewFromSnapshot({
+      snapshot: {
+        available: true,
+        branch: 'feature/review',
+        upstream: 'origin/feature/review',
+        latestCommitSummary: 'abc123 Previous change',
+        ahead: 1,
+        behind: 0,
+        stagedCount: 2,
+        unstagedCount: 0,
+        conflictedCount: 0,
+        summary: '2 staged',
+        stagedFiles: [
+          { path: 'shared/contracts.ts', staged: true, unstaged: false, conflicted: false, stagedKind: 'modified' },
+          { path: 'src/components/ReviewPanel.tsx', staged: true, unstaged: false, conflicted: false, stagedKind: 'modified' },
+        ],
+        unstagedFiles: [],
+        generatedAt: new Date().toISOString(),
+      },
+      reviewedDiffs: [
+        {
+          path: 'shared/contracts.ts',
+          diff: `@@ -10,2 +10,8 @@\n export type Existing = {}\n+export type Added = {}\n`,
+          startLine: 10,
+        },
+        {
+          path: 'src/components/ReviewPanel.tsx',
+          diff: `@@ -40,2 +40,8 @@\n export const ReviewPanel = () => null;\n+export const NewThing = () => null;\n`,
+          startLine: 40,
+        },
+      ],
+    });
+
+    expect(review.findings.some((finding) => finding.id === 'bridge-contract-sync')).toBe(true);
+    expect(review.findings.some((finding) => finding.id === 'missing-test-updates')).toBe(true);
+    expect(review.testingGaps).toContain('No automated test files changed with the current implementation edits.');
+  });
+
+  it('recognizes test-backed changes as a review strength', () => {
+    const review = buildCodeReviewFromSnapshot({
+      snapshot: {
+        available: true,
+        branch: 'feature/review',
+        upstream: 'origin/feature/review',
+        latestCommitSummary: 'abc123 Previous change',
+        ahead: 1,
+        behind: 0,
+        stagedCount: 1,
+        unstagedCount: 0,
+        conflictedCount: 0,
+        summary: '1 staged',
+        stagedFiles: [
+          { path: 'electron/git-service.test.ts', staged: true, unstaged: false, conflicted: false, stagedKind: 'modified' },
+        ],
+        unstagedFiles: [],
+        generatedAt: new Date().toISOString(),
+      },
+      reviewedDiffs: [
+        {
+          path: 'electron/git-service.test.ts',
+          diff: `@@ -5,2 +5,6 @@\n describe('x', () => {})\n+it('y', () => {})\n`,
+          startLine: 5,
+        },
+      ],
+    });
+
+    expect(review.findings).toHaveLength(0);
+    expect(review.strengths.some((strength) => strength.includes('automated coverage'))).toBe(true);
   });
 });
 

@@ -100,6 +100,7 @@ const registerIpcHandlers = (): void => {
   ipcMain.handle('git:create-branch', (_event, input: GitCreateBranchInput) => gitService.createOrSwitchBranch(input));
   ipcMain.handle('git:create-commit', (_event, input: GitCreateCommitInput) => gitService.createCommit(input));
   ipcMain.handle('git:prepare-pr', () => gitService.preparePullRequest());
+  ipcMain.handle('git:review-changes', () => gitService.reviewChanges());
   ipcMain.handle('sessions:list', async () => {
     const sessions = await sessionStore.loadAll();
     return sessions.map(toSessionSummary);

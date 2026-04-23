@@ -11,6 +11,7 @@ import type {
   CreateAutomationInput,
   DesktopApi,
   GitBranchResult,
+  GitCodeReviewResult,
   GitCommitDraft,
   GitCommitResult,
   GitCreateBranchInput,
@@ -39,6 +40,7 @@ const desktopApi: DesktopApi = {
   createGitBranch: (input: GitCreateBranchInput): Promise<GitBranchResult> => ipcRenderer.invoke('git:create-branch', input),
   createGitCommit: (input: GitCreateCommitInput): Promise<GitCommitResult> => ipcRenderer.invoke('git:create-commit', input),
   prepareGitPullRequest: (): Promise<GitPullRequestPrep> => ipcRenderer.invoke('git:prepare-pr'),
+  reviewGitChanges: (): Promise<GitCodeReviewResult> => ipcRenderer.invoke('git:review-changes'),
   listSessions: (): Promise<PersistedSessionSummary[]> => ipcRenderer.invoke('sessions:list'),
   loadSession: (sessionId: string): Promise<PersistedSessionPayload | null> =>
     ipcRenderer.invoke('sessions:load', sessionId),

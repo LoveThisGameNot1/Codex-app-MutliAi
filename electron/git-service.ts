@@ -4,12 +4,16 @@ import type {
   GitBranchResult,
   GitChangeKind,
   GitChangedFile,
+  GitCodeReviewResult,
   GitCommitDraft,
   GitCommitResult,
   GitCreateBranchInput,
   GitCreateCommitInput,
   GitDiffRequest,
   GitDiffResult,
+  GitReviewFinding,
+  GitReviewFindingCategory,
+  GitReviewFindingSeverity,
   GitPullRequestPrep,
   GitReviewSnapshot,
 } from '../shared/contracts';
@@ -158,6 +162,191 @@ const getRelevantFiles = (snapshot: GitReviewSnapshot): GitChangedFile[] => {
   return [...snapshot.stagedFiles, ...snapshot.unstagedFiles].filter(
     (file, index, files) => files.findIndex((candidate) => candidate.path === file.path) === index,
   );
+};
+
+type ReviewedDiffFile = {
+  path: string;
+  diff: string;
+  startLine?: number;
+};
+
+const codeFilePattern = /\.(ts|tsx|js|jsx|json|css|scss|md)$/i;
+const testFilePattern = /(^|\/).+\.(test|spec)\.(ts|tsx|js|jsx)$/i;
+
+const getFirstChangedLine = (diff: string): number | undefined => {
+  const match = diff.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/m);
+  if (!match) {
+    return undefined;
+  }
+
+  return Number(match[1]);
+};
+
+const severityRank: Record<GitReviewFindingSeverity, number> = {
+  low: 1,
+  medium: 2,
+  high: 3,
+};
+
+const buildReviewSummary = (findings: GitReviewFinding[]): string => {
+  if (findings.length === 0) {
+    return 'No obvious review risks were detected by the built-in heuristics.';
+  }
+
+  const highest = findings.reduce<GitReviewFindingSeverity>(
+    (current, finding) => (severityRank[finding.severity] > severityRank[current] ? finding.severity : current),
+    'low',
+  );
+
+  return `${findings.length} review flag${findings.length === 1 ? '' : 's'} detected, with the highest severity at ${highest}.`;
+};
+
+const addFinding = (
+  findings: GitReviewFinding[],
+  input: {
+    id: string;
+    title: string;
+    summary: string;
+    severity: GitReviewFindingSeverity;
+    category: GitReviewFindingCategory;
+    filePath?: string;
+    startLine?: number;
+    endLine?: number;
+  },
+): void => {
+  findings.push(input);
+};
+
+export const buildCodeReviewFromSnapshot = (input: {
+  snapshot: GitReviewSnapshot;
+  reviewedDiffs: ReviewedDiffFile[];
+}): GitCodeReviewResult => {
+  const reviewedFiles = input.reviewedDiffs.map((file) => file.path);
+  const changedFiles = getRelevantFiles(input.snapshot);
+  const changedPaths = changedFiles.map((file) => file.path);
+  const testFiles = reviewedFiles.filter((filePath) => testFilePattern.test(filePath));
+  const codeFiles = reviewedFiles.filter((filePath) => codeFilePattern.test(filePath) && !testFilePattern.test(filePath));
+  const bridgeDiff = input.reviewedDiffs.find((file) =>
+    ['shared/contracts.ts', 'electron/preload.ts', 'electron/main.ts', 'src/services/electron-api.ts'].includes(
+      file.path.replace(/\\/g, '/'),
+    ),
+  );
+  const persistenceDiff = input.reviewedDiffs.find((file) =>
+    ['src/store/app-store.ts', 'electron/session-store.ts', 'electron/automation-store.ts'].includes(
+      file.path.replace(/\\/g, '/'),
+    ),
+  );
+  const uiDiff = input.reviewedDiffs.find((file) => file.path.replace(/\\/g, '/').startsWith('src/components/'));
+  const electronDiff = input.reviewedDiffs.find((file) => file.path.replace(/\\/g, '/').startsWith('electron/'));
+  const findings: GitReviewFinding[] = [];
+
+  if (input.snapshot.conflictedCount > 0) {
+    addFinding(findings, {
+      id: 'conflicts-present',
+      title: 'Resolve merge conflicts before review',
+      summary: 'The working tree still contains conflicted files, so any review conclusions are provisional until those conflicts are resolved.',
+      severity: 'high',
+      category: 'risk',
+      filePath: changedFiles.find((file) => file.conflicted)?.path,
+    });
+  }
+
+  if (bridgeDiff) {
+    addFinding(findings, {
+      id: 'bridge-contract-sync',
+      title: 'Bridge contract changes need end-to-end verification',
+      summary:
+        'Main-process, preload, and renderer contract changes can drift out of sync. Double-check the full Electron round-trip, especially packaged behavior and preload exposure.',
+      severity: 'medium',
+      category: 'regression',
+      filePath: bridgeDiff.path,
+      startLine: bridgeDiff.startLine,
+    });
+  }
+
+  if (persistenceDiff) {
+    addFinding(findings, {
+      id: 'persistence-rehydration',
+      title: 'Persistence changes can affect restored sessions',
+      summary:
+        'State-store or persistence-layer edits can break rehydration paths in subtle ways. A restart smoke test is worth doing before shipping this branch.',
+      severity: 'medium',
+      category: 'regression',
+      filePath: persistenceDiff.path,
+      startLine: persistenceDiff.startLine,
+    });
+  }
+
+  if (uiDiff) {
+    addFinding(findings, {
+      id: 'ui-review-regression',
+      title: 'UI workflow changes need interaction coverage',
+      summary:
+        'Review-center layout and control changes can regress discoverability or overflow behavior. It is worth checking the updated workflow at desktop sizes before release.',
+      severity: 'low',
+      category: 'risk',
+      filePath: uiDiff.path,
+      startLine: uiDiff.startLine,
+    });
+  }
+
+  if (codeFiles.length > 0 && testFiles.length === 0) {
+    addFinding(findings, {
+      id: 'missing-test-updates',
+      title: 'Code changes do not include matching test updates',
+      summary:
+        'The current change set touches implementation files, but there are no changed automated tests alongside them. Consider adding or updating focused coverage before merging.',
+      severity: 'medium',
+      category: 'tests',
+      filePath: codeFiles[0],
+      startLine: input.reviewedDiffs.find((file) => file.path === codeFiles[0])?.startLine,
+    });
+  }
+
+  if (electronDiff && !testFiles.some((filePath) => filePath.startsWith('electron/'))) {
+    addFinding(findings, {
+      id: 'main-process-coverage-gap',
+      title: 'Main-process behavior lacks matching backend coverage',
+      summary:
+        'Electron-side changes are present, but there is no matching Electron test update in the diff. Packaging and IPC flows should be covered carefully.',
+      severity: 'medium',
+      category: 'tests',
+      filePath: electronDiff.path,
+      startLine: electronDiff.startLine,
+    });
+  }
+
+  const strengths: string[] = [];
+  if (testFiles.length > 0) {
+    strengths.push('The change set updates automated coverage alongside implementation changes.');
+  }
+  if (input.snapshot.stagedCount > 0 && input.snapshot.unstagedCount === 0) {
+    strengths.push('The working tree is fully staged, which makes the review scope easier to reason about.');
+  }
+  const topScopes = [...new Set(changedPaths.map(getTopLevelScope))];
+  if (topScopes.length > 0 && topScopes.length <= 2) {
+    strengths.push(`The review scope stays fairly concentrated in ${formatList(topScopes)}.`);
+  }
+
+  const testingGaps: string[] = [];
+  if (testFiles.length === 0 && codeFiles.length > 0) {
+    testingGaps.push('No automated test files changed with the current implementation edits.');
+  }
+  if (uiDiff) {
+    testingGaps.push('Run a quick desktop smoke test for the updated review workflow and layout states.');
+  }
+  if (electronDiff) {
+    testingGaps.push('Validate packaged Electron behavior after the Git workflow changes.');
+  }
+
+  return {
+    summary: buildReviewSummary(findings),
+    findings,
+    strengths,
+    testingGaps,
+    reviewedFiles,
+    generatedAt: nowIso(),
+  };
 };
 
 export const buildCommitDraftFromSnapshot = (snapshot: GitReviewSnapshot): GitCommitDraft => {
@@ -558,6 +747,50 @@ export class GitService {
       commitSummaries,
       diffStat,
       warning: snapshot.upstream ? undefined : 'No upstream branch is configured yet. This draft is based on the current local branch and working tree.',
+    });
+  }
+
+  public async reviewChanges(): Promise<GitCodeReviewResult> {
+    const snapshot = await this.getReviewSnapshot();
+    if (!snapshot.available) {
+      throw new Error('Git repository unavailable.');
+    }
+
+    const reviewedFiles = getRelevantFiles(snapshot);
+    const reviewedDiffs = await Promise.all(
+      reviewedFiles.map(async (file) => {
+        const diffParts: string[] = [];
+        if (file.staged) {
+          const stagedDiff = await this.getDiff({
+            path: file.path,
+            staged: true,
+          });
+          if (stagedDiff.diff.trim()) {
+            diffParts.push(stagedDiff.diff);
+          }
+        }
+        if (file.unstaged) {
+          const unstagedDiff = await this.getDiff({
+            path: file.path,
+            staged: false,
+          });
+          if (unstagedDiff.diff.trim()) {
+            diffParts.push(unstagedDiff.diff);
+          }
+        }
+
+        const diff = diffParts.join('\n');
+        return {
+          path: file.path,
+          diff,
+          startLine: getFirstChangedLine(diff),
+        };
+      }),
+    );
+
+    return buildCodeReviewFromSnapshot({
+      snapshot,
+      reviewedDiffs,
     });
   }
 
