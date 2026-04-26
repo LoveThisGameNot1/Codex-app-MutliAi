@@ -1,0 +1,23 @@
+{
+  "id": "readme-maintainer",
+  "name": "README Maintainer",
+  "version": "0.1.0",
+  "description": "Example local plugin manifest for documentation and release-note maintenance workflows.",
+  "author": "CodexApp",
+  "capabilities": [
+    {
+      "kind": "skill",
+      "name": "readme_review",
+      "description": "Reviews README content for missing setup, usage, and release information."
+    },
+    {
+      "kind": "workflow",
+      "name": "release_notes",
+      "description": "Provides a repeatable workflow shape for drafting release notes from Git context."
+    }
+  ],
+  "permissions": [
+    "readWorkspace"
+  ],
+  "entrypoint": "README.md"
+}

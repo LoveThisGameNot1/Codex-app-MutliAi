@@ -46,6 +46,14 @@ export type AutomationStatus = 'active' | 'paused';
 export type AutomationRunStatus = 'running' | 'completed' | 'failed';
 export type AutomationWeekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type TaskIsolationMode = 'workspace' | 'safe-clone';
+export type PluginStatus = 'enabled' | 'disabled' | 'invalid';
+export type PluginCapabilityKind = 'tool' | 'mcp' | 'skill' | 'automation' | 'workflow';
+export type PluginPermissionKey =
+  | 'readWorkspace'
+  | 'writeWorkspace'
+  | 'executeCommands'
+  | 'networkAccess'
+  | 'storeSecrets';
 export type GitChangeKind =
   | 'added'
   | 'modified'
@@ -127,6 +135,35 @@ export type TaskCloneResult = {
   clonePath: string;
   sourcePath: string;
   createdAt: string;
+};
+
+export type PluginCapability = {
+  kind: PluginCapabilityKind;
+  name: string;
+  description: string;
+};
+
+export type PluginManifest = {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  author?: string;
+  capabilities: PluginCapability[];
+  permissions: PluginPermissionKey[];
+  entrypoint?: string;
+};
+
+export type PluginRecord = PluginManifest & {
+  sourcePath: string;
+  enabled: boolean;
+  status: PluginStatus;
+  statusDetail: string;
+};
+
+export type UpdatePluginStateInput = {
+  id: string;
+  enabled: boolean;
 };
 
 export type GitChangedFile = {
@@ -481,6 +518,8 @@ export type DesktopApi = {
   updateAutomation: (input: UpdateAutomationInput) => Promise<AutomationRecord>;
   deleteAutomation: (automationId: string) => Promise<void>;
   runAutomation: (automationId: string) => Promise<AutomationRunRecord>;
+  listPlugins: () => Promise<PluginRecord[]>;
+  updatePluginState: (input: UpdatePluginStateInput) => Promise<PluginRecord>;
   getGitReview: () => Promise<GitReviewSnapshot>;
   getGitDiff: (request: GitDiffRequest) => Promise<GitDiffResult>;
   draftGitCommit: () => Promise<GitCommitDraft>;

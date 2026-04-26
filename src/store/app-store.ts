@@ -13,6 +13,7 @@ import type {
   MessageStatus,
   MessageRole,
   PersistedSessionSummary,
+  PluginRecord,
   TaskIsolationMode,
   TaskCloneResult,
   ToolApprovalDecision,
@@ -64,6 +65,7 @@ export type AppState = {
   persistedSessions: PersistedSessionSummary[];
   automations: AutomationRecord[];
   automationRuns: AutomationRunRecord[];
+  plugins: PluginRecord[];
   gitReview: GitReviewSnapshot | null;
   gitReviewComments: GitInlineReviewComment[];
   acknowledgedAutomationRunIds: string[];
@@ -95,6 +97,7 @@ export type AppState = {
   setPersistedSessions: (sessions: PersistedSessionSummary[]) => void;
   setAutomations: (automations: AutomationRecord[]) => void;
   setAutomationRuns: (runs: AutomationRunRecord[]) => void;
+  setPlugins: (plugins: PluginRecord[]) => void;
   setGitReview: (review: GitReviewSnapshot | null) => void;
   addGitReviewComment: (input: { filePath: string; lineNumber: number; body: string }) => string;
   resolveGitReviewComment: (commentId: string) => void;
@@ -214,6 +217,7 @@ export const useAppStore = create<AppState>()(
         persistedSessions: [],
         automations: [],
         automationRuns: [],
+        plugins: [],
         gitReview: null,
         gitReviewComments: [],
         acknowledgedAutomationRunIds: [],
@@ -314,6 +318,7 @@ export const useAppStore = create<AppState>()(
             acknowledgedAutomationRunIds: state.acknowledgedAutomationRunIds.filter((id) => knownRunIds.has(id)),
           };
         }),
+      setPlugins: (plugins) => set({ plugins }),
       setGitReview: (gitReview) => set({ gitReview }),
       addGitReviewComment: ({ filePath, lineNumber, body }) => {
         const commentId = createId();
@@ -711,6 +716,7 @@ export const useAppStore = create<AppState>()(
         persistedSessions: state.persistedSessions,
         automations: state.automations,
         automationRuns: state.automationRuns,
+        plugins: state.plugins,
         gitReview: state.gitReview,
         gitReviewComments: state.gitReviewComments,
         acknowledgedAutomationRunIds: state.acknowledgedAutomationRunIds,

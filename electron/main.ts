@@ -12,12 +12,14 @@ import {
   ResetChatRequest,
   StartChatRequest,
   UpdateAutomationInput,
+  UpdatePluginStateInput,
 } from '../shared/contracts';
 import { AutomationService } from './automation-service';
 import { AutomationStore } from './automation-store';
 import { ConfigStore } from './config-store';
 import { GitService } from './git-service';
 import { LlmService } from './llm-service';
+import { PluginService } from './plugin-service';
 import { SessionStore, toSessionSummary } from './session-store';
 import { TaskWorkspaceService } from './task-workspace-service';
 
@@ -30,6 +32,7 @@ const sessionStore = new SessionStore(app.getPath('userData'));
 const automationStore = new AutomationStore(app.getPath('userData'));
 const llmService = new LlmService(workspaceRoot, sessionStore);
 const gitService = new GitService(workspaceRoot);
+const pluginService = new PluginService(workspaceRoot, app.getPath('userData'));
 const taskWorkspaceService = new TaskWorkspaceService(workspaceRoot, path.join(app.getPath('userData'), 'task-clones'));
 const emitChatEvent = (event: ChatStreamEvent): void => {
   mainWindow?.webContents.send('chat:event', event);
@@ -115,6 +118,8 @@ const registerIpcHandlers = (): void => {
   ipcMain.handle('automations:update', (_event, input: UpdateAutomationInput) => automationService.updateAutomation(input));
   ipcMain.handle('automations:delete', (_event, automationId: string) => automationService.deleteAutomation(automationId));
   ipcMain.handle('automations:run', (_event, automationId: string) => automationService.runAutomationNow(automationId));
+  ipcMain.handle('plugins:list', () => pluginService.listPlugins());
+  ipcMain.handle('plugins:update-state', (_event, input: UpdatePluginStateInput) => pluginService.updatePluginState(input));
   ipcMain.handle('task-workspaces:create-safe-clone', (_event, input) => taskWorkspaceService.createSafeClone(input));
   ipcMain.handle('task-workspaces:discard-safe-clone', (_event, clonePath: string) =>
     taskWorkspaceService.discardSafeClone(clonePath),

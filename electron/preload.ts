@@ -22,11 +22,13 @@ import type {
   GitReviewSnapshot,
   PersistedSessionPayload,
   PersistedSessionSummary,
+  PluginRecord,
   ResetChatRequest,
   ResolveToolApprovalInput,
   StartChatRequest,
   TaskCloneResult,
   UpdateAutomationInput,
+  UpdatePluginStateInput,
 } from '../shared/contracts';
 
 const desktopApi: DesktopApi = {
@@ -53,6 +55,9 @@ const desktopApi: DesktopApi = {
     ipcRenderer.invoke('automations:update', input),
   deleteAutomation: (automationId: string): Promise<void> => ipcRenderer.invoke('automations:delete', automationId),
   runAutomation: (automationId: string): Promise<AutomationRunRecord> => ipcRenderer.invoke('automations:run', automationId),
+  listPlugins: (): Promise<PluginRecord[]> => ipcRenderer.invoke('plugins:list'),
+  updatePluginState: (input: UpdatePluginStateInput): Promise<PluginRecord> =>
+    ipcRenderer.invoke('plugins:update-state', input),
   createSafeTaskClone: (input: CreateSafeTaskCloneInput): Promise<TaskCloneResult> =>
     ipcRenderer.invoke('task-workspaces:create-safe-clone', input),
   discardSafeTaskClone: (clonePath: string): Promise<void> =>

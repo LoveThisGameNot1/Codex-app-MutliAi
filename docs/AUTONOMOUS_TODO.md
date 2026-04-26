@@ -64,11 +64,11 @@ Why this matters:
 
 ## Priority 5: Plugin, MCP, And Extensibility Layer
 
-- [ ] Design a first-class plugin system for external tools and skills.
+- [x] Design a first-class plugin system for external tools and skills.
 - [ ] Add MCP-style connectors so the app can talk to external servers and data sources.
-- [ ] Create a permission model for third-party tools.
-- [ ] Add a plugin manager UI with install, enable, disable, and status views.
-- [ ] Document a minimal plugin API and provide one example plugin.
+- [x] Create a permission model for third-party tools.
+- [x] Add a plugin manager UI with install, enable, disable, and status views.
+- [x] Document a minimal plugin API and provide one example plugin.
 
 Why this matters:
 - This is one of the biggest gaps versus Claude Code.

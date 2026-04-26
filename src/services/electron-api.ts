@@ -22,11 +22,13 @@ import type {
   GitReviewSnapshot,
   PersistedSessionPayload,
   PersistedSessionSummary,
+  PluginRecord,
   ResetChatRequest,
   ResolveToolApprovalInput,
   StartChatRequest,
   TaskCloneResult,
   UpdateAutomationInput,
+  UpdatePluginStateInput,
 } from '../../shared/contracts';
 
 const requireDesktopApi = () => {
@@ -73,6 +75,9 @@ export const updateAutomation = (input: UpdateAutomationInput): Promise<Automati
 export const deleteAutomation = (automationId: string): Promise<void> => requireDesktopApi().deleteAutomation(automationId);
 export const runAutomation = (automationId: string): Promise<AutomationRunRecord> =>
   requireDesktopApi().runAutomation(automationId);
+export const listPlugins = (): Promise<PluginRecord[]> => requireDesktopApi().listPlugins();
+export const updatePluginState = (input: UpdatePluginStateInput): Promise<PluginRecord> =>
+  requireDesktopApi().updatePluginState(input);
 export const createSafeTaskClone = (input: CreateSafeTaskCloneInput): Promise<TaskCloneResult> =>
   requireDesktopApi().createSafeTaskClone(input);
 export const discardSafeTaskClone = (clonePath: string): Promise<void> =>
