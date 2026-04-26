@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { GitChangedFile, GitCodeReviewResult, GitCommitDraft, GitDiffResult, GitPullRequestPrep } from '../../shared/contracts';
+import type {
+  GitChangedFile,
+  GitCodeReviewResult,
+  GitCommitDraft,
+  GitDiffResult,
+  GitInlineReviewComment,
+  GitPullRequestPrep,
+} from '../../shared/contracts';
 import { createGitBranch, createGitCommit, draftGitCommit, getGitDiff, prepareGitPullRequest, reviewGitChanges } from '@/services/electron-api';
+import { parseUnifiedDiffForComments, type ParsedDiffLine } from '@/services/git-review-comments';
 import { gitRuntime } from '@/services/git-runtime';
 import { useAppStore } from '@/store/app-store';
 import { cn } from '@/utils/cn';
@@ -27,6 +35,19 @@ const sectionStyle = 'rounded-[28px] border border-white/10 bg-slate-950/70 p-5 
 
 const actionButtonStyle =
   'rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50';
+
+const diffLineTone = (kind: ParsedDiffLine['kind']): string => {
+  switch (kind) {
+    case 'added':
+      return 'bg-emerald-300/10 text-emerald-100';
+    case 'removed':
+      return 'bg-rose-300/10 text-rose-100';
+    case 'meta':
+      return 'bg-sky-300/10 text-sky-200';
+    default:
+      return 'text-slate-200';
+  }
+};
 
 const DiffCard = ({
   title,
@@ -83,9 +104,62 @@ const DiffCard = ({
   </div>
 );
 
+const InlineCommentCard = ({
+  comment,
+  onResolve,
+  onDelete,
+}: {
+  comment: GitInlineReviewComment;
+  onResolve: (commentId: string) => void;
+  onDelete: (commentId: string) => void;
+}) => (
+  <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+          {comment.filePath}:{comment.lineNumber}
+        </p>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-200">{comment.body}</p>
+      </div>
+      <span
+        className={cn(
+          'shrink-0 rounded-full border px-2.5 py-1 text-[11px] uppercase tracking-[0.18em]',
+          comment.status === 'open'
+            ? 'border-amber-300/30 bg-amber-300/10 text-amber-100'
+            : 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100',
+        )}
+      >
+        {comment.status}
+      </span>
+    </div>
+    <div className="mt-3 flex flex-wrap gap-2">
+      {comment.status === 'open' ? (
+        <button
+          type="button"
+          onClick={() => onResolve(comment.id)}
+          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300 transition hover:bg-white/10"
+        >
+          Resolve
+        </button>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => onDelete(comment.id)}
+        className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300 transition hover:bg-white/10"
+      >
+        Delete
+      </button>
+    </div>
+  </div>
+);
+
 export const ReviewPanel = () => {
   const gitReview = useAppStore((state) => state.gitReview);
   const setGitReview = useAppStore((state) => state.setGitReview);
+  const gitReviewComments = useAppStore((state) => state.gitReviewComments);
+  const addGitReviewComment = useAppStore((state) => state.addGitReviewComment);
+  const resolveGitReviewComment = useAppStore((state) => state.resolveGitReviewComment);
+  const deleteGitReviewComment = useAppStore((state) => state.deleteGitReviewComment);
   const [selected, setSelected] = useState<{ file: GitChangedFile; staged: boolean } | null>(null);
   const [diffResult, setDiffResult] = useState<GitDiffResult | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
@@ -102,6 +176,11 @@ export const ReviewPanel = () => {
   const [commitLoading, setCommitLoading] = useState(false);
   const [prPrepLoading, setPrPrepLoading] = useState(false);
   const [codeReviewLoading, setCodeReviewLoading] = useState(false);
+  const [commentDraft, setCommentDraft] = useState<{
+    filePath: string;
+    lineNumber: number;
+    body: string;
+  } | null>(null);
 
   useEffect(() => {
     void gitRuntime.refreshReview();
@@ -144,6 +223,24 @@ export const ReviewPanel = () => {
   }, [selected]);
 
   const selectedKey = selected ? `${selected.staged ? 'staged' : 'unstaged'}:${selected.file.path}` : null;
+  const diffLines = useMemo(
+    () => (diffResult?.diff ? parseUnifiedDiffForComments(diffResult.diff) : []),
+    [diffResult?.diff],
+  );
+  const selectedFileComments = useMemo(
+    () =>
+      selected
+        ? gitReviewComments
+            .filter((comment) => comment.filePath === selected.file.path)
+            .sort((left, right) => {
+              if (left.status !== right.status) {
+                return left.status === 'open' ? -1 : 1;
+              }
+              return left.lineNumber - right.lineNumber;
+            })
+        : [],
+    [gitReviewComments, selected],
+  );
   const summaryCards = useMemo(
     () =>
       gitReview
@@ -254,6 +351,28 @@ export const ReviewPanel = () => {
     } finally {
       setCodeReviewLoading(false);
     }
+  };
+
+  const startCommentDraft = (filePath: string, lineNumber: number, body = '') => {
+    setCommentDraft({
+      filePath,
+      lineNumber,
+      body,
+    });
+  };
+
+  const submitCommentDraft = () => {
+    if (!commentDraft?.body.trim()) {
+      return;
+    }
+
+    addGitReviewComment({
+      filePath: commentDraft.filePath,
+      lineNumber: commentDraft.lineNumber,
+      body: commentDraft.body.trim(),
+    });
+    setCommentDraft(null);
+    setActionNotice(`Added inline review comment on ${commentDraft.filePath}:${commentDraft.lineNumber}.`);
   };
 
   if (!gitReview) {
@@ -463,10 +582,21 @@ export const ReviewPanel = () => {
                         <p className="mt-3 text-sm font-semibold text-slate-100">{finding.title}</p>
                         <p className="mt-2 text-sm leading-6 text-slate-300">{finding.summary}</p>
                         {finding.filePath ? (
-                          <p className="mt-3 text-xs text-slate-500">
-                            {finding.filePath}
-                            {finding.startLine ? `:${finding.startLine}` : ''}
-                          </p>
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <p className="text-xs text-slate-500">
+                              {finding.filePath}
+                              {finding.startLine ? `:${finding.startLine}` : ''}
+                            </p>
+                            {finding.startLine ? (
+                              <button
+                                type="button"
+                                onClick={() => startCommentDraft(finding.filePath!, finding.startLine!, finding.summary)}
+                                className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-slate-300 transition hover:bg-white/10"
+                              >
+                                Add inline comment
+                              </button>
+                            ) : null}
+                          </div>
                         ) : null}
                       </div>
                     ))
@@ -561,14 +691,105 @@ export const ReviewPanel = () => {
               <div className="p-4 text-sm text-slate-400">Loading diff…</div>
             ) : diffError ? (
               <div className="p-4 text-sm text-rose-300">{diffError}</div>
+            ) : diffResult && diffLines.length > 0 ? (
+              <div className="max-h-[560px] overflow-auto py-2 font-mono text-xs">
+                {diffLines.map((line) => {
+                  const lineComments = selected
+                    ? gitReviewComments.filter(
+                        (comment) =>
+                          comment.filePath === selected.file.path &&
+                          comment.lineNumber === line.anchorLineNumber,
+                      )
+                    : [];
+
+                  return (
+                    <div key={line.id} className={cn('group grid grid-cols-[72px_1fr_auto] gap-3 px-3 py-1', diffLineTone(line.kind))}>
+                      <span className="select-none text-right text-slate-500">
+                        {line.newLineNumber ?? line.oldLineNumber ?? ''}
+                      </span>
+                      <span className="whitespace-pre-wrap break-words">{line.content || ' '}</span>
+                      {selected && line.anchorLineNumber ? (
+                        <button
+                          type="button"
+                          onClick={() => startCommentDraft(selected.file.path, line.anchorLineNumber ?? 1)}
+                          className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[11px] text-slate-300 opacity-0 transition hover:bg-white/10 group-hover:opacity-100"
+                        >
+                          Comment
+                        </button>
+                      ) : (
+                        <span />
+                      )}
+                      {lineComments.length > 0 ? (
+                        <div className="col-span-3 ml-[72px] space-y-2 border-l border-sky-300/20 pl-3">
+                          {lineComments.map((comment) => (
+                            <InlineCommentCard
+                              key={comment.id}
+                              comment={comment}
+                              onResolve={resolveGitReviewComment}
+                              onDelete={deleteGitReviewComment}
+                            />
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
             ) : diffResult ? (
-              <pre className="max-h-[560px] overflow-auto p-4 text-xs leading-6 text-slate-200">
-                {diffResult.diff || 'No diff output for this file.'}
-              </pre>
+              <div className="p-4 text-sm text-slate-500">No diff output for this file.</div>
             ) : (
               <div className="p-4 text-sm text-slate-500">No file selected yet.</div>
             )}
           </div>
+
+          {commentDraft ? (
+            <div className="mt-4 rounded-3xl border border-sky-300/20 bg-sky-300/10 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-100">
+                  Comment on {commentDraft.filePath}:{commentDraft.lineNumber}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setCommentDraft(null)}
+                  className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-slate-300 transition hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+              </div>
+              <textarea
+                value={commentDraft.body}
+                onChange={(event) =>
+                  setCommentDraft({
+                    ...commentDraft,
+                    body: event.target.value,
+                  })
+                }
+                className="mt-3 min-h-[96px] w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-300/40"
+                placeholder="Write an actionable review comment..."
+              />
+              <div className="mt-3 flex justify-end">
+                <button type="button" onClick={submitCommentDraft} className={actionButtonStyle} disabled={!commentDraft.body.trim()}>
+                  Save comment
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {selected && selectedFileComments.length > 0 ? (
+            <div className="mt-4 rounded-3xl border border-white/10 bg-black/20 p-4">
+              <p className="text-sm font-semibold text-slate-100">Comments on this file</p>
+              <div className="mt-3 space-y-2">
+                {selectedFileComments.map((comment) => (
+                  <InlineCommentCard
+                    key={comment.id}
+                    comment={comment}
+                    onResolve={resolveGitReviewComment}
+                    onDelete={deleteGitReviewComment}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

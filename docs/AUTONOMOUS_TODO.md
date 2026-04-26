@@ -57,7 +57,7 @@ Why this matters:
 - [x] Add staged/unstaged visibility inside the app.
 - [x] Support commit drafting, branch creation, and PR prep from the UI.
 - [x] Add a code-review mode that highlights risks, regressions, and missing tests.
-- [ ] Support inline review comments anchored to files and lines.
+- [x] Support inline review comments anchored to files and lines.
 
 Why this matters:
 - Both Codex app and Claude Code are stronger in review-centric workflows.

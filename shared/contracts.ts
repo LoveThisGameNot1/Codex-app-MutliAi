@@ -234,6 +234,18 @@ export type GitCodeReviewResult = {
   generatedAt: string;
 };
 
+export type GitInlineReviewCommentStatus = 'open' | 'resolved';
+
+export type GitInlineReviewComment = {
+  id: string;
+  filePath: string;
+  lineNumber: number;
+  body: string;
+  status: GitInlineReviewCommentStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ChatMessage = {
   id: string;
   taskId?: string;

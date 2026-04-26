@@ -8,6 +8,7 @@ import type {
   ArtifactViewMode,
   ChatMessage,
   DesktopAppInfo,
+  GitInlineReviewComment,
   GitReviewSnapshot,
   MessageStatus,
   MessageRole,
@@ -64,6 +65,7 @@ export type AppState = {
   automations: AutomationRecord[];
   automationRuns: AutomationRunRecord[];
   gitReview: GitReviewSnapshot | null;
+  gitReviewComments: GitInlineReviewComment[];
   acknowledgedAutomationRunIds: string[];
   composerValue: string;
   isStreaming: boolean;
@@ -94,6 +96,9 @@ export type AppState = {
   setAutomations: (automations: AutomationRecord[]) => void;
   setAutomationRuns: (runs: AutomationRunRecord[]) => void;
   setGitReview: (review: GitReviewSnapshot | null) => void;
+  addGitReviewComment: (input: { filePath: string; lineNumber: number; body: string }) => string;
+  resolveGitReviewComment: (commentId: string) => void;
+  deleteGitReviewComment: (commentId: string) => void;
   acknowledgeAutomationRun: (runId: string) => void;
   acknowledgeAutomationRuns: (runIds: string[]) => void;
   loadPersistedConversation: (input: {
@@ -210,6 +215,7 @@ export const useAppStore = create<AppState>()(
         automations: [],
         automationRuns: [],
         gitReview: null,
+        gitReviewComments: [],
         acknowledgedAutomationRunIds: [],
         composerValue: '',
         isStreaming: false,
@@ -309,6 +315,41 @@ export const useAppStore = create<AppState>()(
           };
         }),
       setGitReview: (gitReview) => set({ gitReview }),
+      addGitReviewComment: ({ filePath, lineNumber, body }) => {
+        const commentId = createId();
+        set((state) => {
+          const createdAt = nowIso();
+          const comment: GitInlineReviewComment = {
+            id: commentId,
+            filePath,
+            lineNumber,
+            body,
+            status: 'open',
+            createdAt,
+            updatedAt: createdAt,
+          };
+          return {
+            gitReviewComments: [comment, ...state.gitReviewComments],
+          };
+        });
+        return commentId;
+      },
+      resolveGitReviewComment: (commentId) =>
+        set((state) => ({
+          gitReviewComments: state.gitReviewComments.map((comment) =>
+            comment.id === commentId
+              ? {
+                  ...comment,
+                  status: 'resolved',
+                  updatedAt: nowIso(),
+                }
+              : comment,
+          ),
+        })),
+      deleteGitReviewComment: (commentId) =>
+        set((state) => ({
+          gitReviewComments: state.gitReviewComments.filter((comment) => comment.id !== commentId),
+        })),
       acknowledgeAutomationRun: (runId) =>
         set((state) => ({
           acknowledgedAutomationRunIds: [runId, ...state.acknowledgedAutomationRunIds.filter((id) => id !== runId)].slice(
@@ -671,6 +712,7 @@ export const useAppStore = create<AppState>()(
         automations: state.automations,
         automationRuns: state.automationRuns,
         gitReview: state.gitReview,
+        gitReviewComments: state.gitReviewComments,
         acknowledgedAutomationRunIds: state.acknowledgedAutomationRunIds,
         composerValue: state.composerValue,
         settingsOpen: state.settingsOpen,
