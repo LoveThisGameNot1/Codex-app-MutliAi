@@ -6,6 +6,7 @@ import type {
   AutomationRecord,
   AutomationRunRecord,
   CancelChatRequest,
+  CheckMcpConnectorInput,
   ChatStreamEvent,
   CreateSafeTaskCloneInput,
   CreateAutomationInput,
@@ -20,6 +21,8 @@ import type {
   GitDiffResult,
   GitPullRequestPrep,
   GitReviewSnapshot,
+  McpConnectorCheckResult,
+  McpConnectorRecord,
   PersistedSessionPayload,
   PersistedSessionSummary,
   PluginRecord,
@@ -58,6 +61,9 @@ const desktopApi: DesktopApi = {
   listPlugins: (): Promise<PluginRecord[]> => ipcRenderer.invoke('plugins:list'),
   updatePluginState: (input: UpdatePluginStateInput): Promise<PluginRecord> =>
     ipcRenderer.invoke('plugins:update-state', input),
+  listMcpConnectors: (): Promise<McpConnectorRecord[]> => ipcRenderer.invoke('mcp-connectors:list'),
+  checkMcpConnector: (input: CheckMcpConnectorInput): Promise<McpConnectorCheckResult> =>
+    ipcRenderer.invoke('mcp-connectors:check', input),
   createSafeTaskClone: (input: CreateSafeTaskCloneInput): Promise<TaskCloneResult> =>
     ipcRenderer.invoke('task-workspaces:create-safe-clone', input),
   discardSafeTaskClone: (clonePath: string): Promise<void> =>

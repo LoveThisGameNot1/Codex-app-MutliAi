@@ -14,10 +14,29 @@
       "kind": "workflow",
       "name": "release_notes",
       "description": "Provides a repeatable workflow shape for drafting release notes from Git context."
+    },
+    {
+      "kind": "mcp",
+      "name": "readme_mcp",
+      "description": "Exposes README maintenance helpers through a local stdio MCP-style connector."
     }
   ],
   "permissions": [
-    "readWorkspace"
+    "readWorkspace",
+    "executeCommands"
+  ],
+  "mcpConnectors": [
+    {
+      "id": "readme-tools",
+      "name": "README Tools",
+      "description": "Local stdio connector that answers MCP initialize and exposes README-oriented tool metadata.",
+      "transport": "stdio",
+      "command": "node",
+      "args": [
+        "mcp-server.mjs"
+      ],
+      "timeoutMs": 5000
+    }
   ],
   "entrypoint": "README.md"
 }

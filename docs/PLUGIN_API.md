@@ -18,9 +18,25 @@ The current implementation supports plugin discovery, validation, permission dis
       "kind": "skill",
       "name": "readme_review",
       "description": "Reviews README content for missing setup and usage details."
+    },
+    {
+      "kind": "mcp",
+      "name": "readme_mcp",
+      "description": "Exposes README helpers through a local stdio MCP-style connector."
     }
   ],
-  "permissions": ["readWorkspace"],
+  "permissions": ["readWorkspace", "executeCommands"],
+  "mcpConnectors": [
+    {
+      "id": "readme-tools",
+      "name": "README Tools",
+      "description": "Local stdio connector for README helper metadata.",
+      "transport": "stdio",
+      "command": "node",
+      "args": ["mcp-server.mjs"],
+      "timeoutMs": 5000
+    }
+  ],
   "entrypoint": "README.md"
 }
 ```
@@ -33,6 +49,7 @@ The current implementation supports plugin discovery, validation, permission dis
 - `description`: short user-facing summary.
 - `capabilities`: declared plugin features.
 - `permissions`: requested host permissions.
+- `mcpConnectors`: optional list of MCP-style connector declarations.
 
 ## Capability Kinds
 
@@ -49,6 +66,35 @@ The current implementation supports plugin discovery, validation, permission dis
 - `executeCommands`: run local commands.
 - `networkAccess`: access network resources.
 - `storeSecrets`: store or read plugin secrets.
+
+## MCP Connectors
+
+MCP connector declarations let plugins expose external servers or data sources through the app's plugin bridge. The current runtime lists connectors in the plugin manager and can run permission-gated health checks from the Electron main process.
+
+Supported transports:
+
+- `stdio`: launches a local command and sends an MCP `initialize` JSON-RPC request over stdin. Requires `executeCommands`.
+- `http`: sends an MCP `initialize` JSON-RPC request to an HTTP endpoint. Requires `networkAccess`.
+- `sse`: opens an event-stream connection to an SSE endpoint. Requires `networkAccess`.
+
+Connector fields:
+
+- `id`: stable connector id unique within the plugin.
+- `name`: display name.
+- `description`: user-facing summary.
+- `transport`: `stdio`, `http`, or `sse`.
+- `command`: required for `stdio`.
+- `args`: optional command arguments for `stdio`.
+- `url`: required for `http` and `sse`.
+- `env`: optional string environment values passed to `stdio` processes.
+- `headers`: optional string headers for `http` and `sse` checks.
+- `timeoutMs`: optional timeout clamped between 1000 and 30000 milliseconds.
+
+Security notes:
+
+- Do not store long-lived secrets directly in `plugin.json`; use future secret storage support for real credentials.
+- Connectors from disabled plugins are listed but cannot be checked or used.
+- A connector health check does not grant the plugin broader workspace access than its declared permissions.
 
 ## Status Model
 

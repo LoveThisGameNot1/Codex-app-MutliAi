@@ -48,6 +48,9 @@ export type AutomationWeekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type TaskIsolationMode = 'workspace' | 'safe-clone';
 export type PluginStatus = 'enabled' | 'disabled' | 'invalid';
 export type PluginCapabilityKind = 'tool' | 'mcp' | 'skill' | 'automation' | 'workflow';
+export type McpConnectorTransport = 'stdio' | 'http' | 'sse';
+export type McpConnectorStatus = 'ready' | 'disabled' | 'invalid';
+export type McpConnectorCheckStatus = 'connected' | 'failed' | 'skipped';
 export type PluginPermissionKey =
   | 'readWorkspace'
   | 'writeWorkspace'
@@ -143,6 +146,19 @@ export type PluginCapability = {
   description: string;
 };
 
+export type McpConnectorManifest = {
+  id: string;
+  name: string;
+  description: string;
+  transport: McpConnectorTransport;
+  command?: string;
+  args?: string[];
+  url?: string;
+  env?: Record<string, string>;
+  headers?: Record<string, string>;
+  timeoutMs?: number;
+};
+
 export type PluginManifest = {
   id: string;
   name: string;
@@ -151,6 +167,7 @@ export type PluginManifest = {
   author?: string;
   capabilities: PluginCapability[];
   permissions: PluginPermissionKey[];
+  mcpConnectors: McpConnectorManifest[];
   entrypoint?: string;
 };
 
@@ -161,9 +178,36 @@ export type PluginRecord = PluginManifest & {
   statusDetail: string;
 };
 
+export type McpConnectorRecord = McpConnectorManifest & {
+  pluginId: string;
+  pluginName: string;
+  pluginSourcePath: string;
+  pluginEnabled: boolean;
+  pluginPermissions: PluginPermissionKey[];
+  status: McpConnectorStatus;
+  statusDetail: string;
+};
+
 export type UpdatePluginStateInput = {
   id: string;
   enabled: boolean;
+};
+
+export type CheckMcpConnectorInput = {
+  pluginId: string;
+  connectorId: string;
+};
+
+export type McpConnectorCheckResult = {
+  pluginId: string;
+  connectorId: string;
+  connectorName: string;
+  transport: McpConnectorTransport;
+  status: McpConnectorCheckStatus;
+  ok: boolean;
+  detail: string;
+  checkedAt: string;
+  responseSummary?: string;
 };
 
 export type GitChangedFile = {
@@ -520,6 +564,8 @@ export type DesktopApi = {
   runAutomation: (automationId: string) => Promise<AutomationRunRecord>;
   listPlugins: () => Promise<PluginRecord[]>;
   updatePluginState: (input: UpdatePluginStateInput) => Promise<PluginRecord>;
+  listMcpConnectors: () => Promise<McpConnectorRecord[]>;
+  checkMcpConnector: (input: CheckMcpConnectorInput) => Promise<McpConnectorCheckResult>;
   getGitReview: () => Promise<GitReviewSnapshot>;
   getGitDiff: (request: GitDiffRequest) => Promise<GitDiffResult>;
   draftGitCommit: () => Promise<GitCommitDraft>;

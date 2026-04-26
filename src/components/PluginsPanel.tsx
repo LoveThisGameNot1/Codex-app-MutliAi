@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { LLM_PROVIDER_PRESETS, getProviderPreset } from '../../shared/provider-presets';
 import { inferConfiguredModelCapabilities } from '../../shared/model-capabilities';
+import type { McpConnectorCheckResult, McpConnectorRecord } from '../../shared/contracts';
 import { summarizeAutomationToolPolicy } from '../../shared/tool-policy';
 import { pluginRuntime } from '@/services/plugin-runtime';
 import { useAppStore } from '@/store/app-store';
@@ -22,16 +23,45 @@ const pluginStatusTone = (status: string): string => {
   }
 };
 
+const connectorStatusTone = (status: string): string => {
+  switch (status) {
+    case 'ready':
+    case 'connected':
+      return 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100';
+    case 'failed':
+    case 'invalid':
+      return 'border-rose-300/30 bg-rose-300/10 text-rose-100';
+    case 'skipped':
+      return 'border-amber-300/30 bg-amber-300/10 text-amber-100';
+    default:
+      return 'border-slate-300/20 bg-slate-300/10 text-slate-200';
+  }
+};
+
 const sectionStyle = 'rounded-[26px] border border-white/10 bg-slate-950/60 p-4';
+
+const connectorKey = (connector: Pick<McpConnectorRecord, 'pluginId' | 'id'>): string =>
+  `${connector.pluginId}:${connector.id}`;
+
+const connectorTarget = (connector: McpConnectorRecord): string => {
+  if (connector.transport === 'stdio') {
+    return [connector.command, ...(connector.args ?? [])].filter(Boolean).join(' ');
+  }
+
+  return connector.url ?? 'No endpoint configured';
+};
 
 export const PluginsPanel = () => {
   const config = useAppStore((state) => state.config);
   const automations = useAppStore((state) => state.automations);
   const plugins = useAppStore((state) => state.plugins);
+  const mcpConnectors = useAppStore((state) => state.mcpConnectors);
   const providerPreset = useMemo(() => getProviderPreset(config.providerId), [config.providerId]);
   const capabilities = useMemo(() => inferConfiguredModelCapabilities(config), [config]);
   const automationPolicySummary = useMemo(() => summarizeAutomationToolPolicy(config.toolPolicy), [config.toolPolicy]);
   const [busyPluginId, setBusyPluginId] = useState<string | null>(null);
+  const [checkingConnectorKey, setCheckingConnectorKey] = useState<string | null>(null);
+  const [connectorChecks, setConnectorChecks] = useState<Record<string, McpConnectorCheckResult>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,6 +82,11 @@ export const PluginsPanel = () => {
       description: 'Workspace plugins are loaded from manifest files under the local plugins directory and gated by explicit permissions.',
     },
     {
+      title: 'MCP connectors',
+      value: `${mcpConnectors.length} declared`,
+      description: 'Plugin manifests can expose stdio, HTTP, or SSE MCP connectors that are listed and health-checked from the main process.',
+    },
+    {
       title: 'Automations',
       value: `${automations.length} configured`,
       description: `${automationPolicySummary.headline} ${automationPolicySummary.detail}`,
@@ -60,6 +95,7 @@ export const PluginsPanel = () => {
 
   const enabledPlugins = plugins.filter((plugin) => plugin.enabled).length;
   const invalidPlugins = plugins.filter((plugin) => plugin.status === 'invalid').length;
+  const readyMcpConnectors = mcpConnectors.filter((connector) => connector.status === 'ready').length;
 
   const refreshPlugins = async () => {
     setError(null);
@@ -80,6 +116,29 @@ export const PluginsPanel = () => {
       setError(toggleError instanceof Error ? toggleError.message : 'Unable to update plugin state.');
     } finally {
       setBusyPluginId(null);
+    }
+  };
+
+  const checkConnector = async (connector: McpConnectorRecord) => {
+    const key = connectorKey(connector);
+    setCheckingConnectorKey(key);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const result = await pluginRuntime.checkMcpConnector({
+        pluginId: connector.pluginId,
+        connectorId: connector.id,
+      });
+      setConnectorChecks((current) => ({
+        ...current,
+        [key]: result,
+      }));
+      setNotice(`${connector.name}: ${result.detail}`);
+    } catch (checkError) {
+      setError(checkError instanceof Error ? checkError.message : 'Unable to check MCP connector.');
+    } finally {
+      setCheckingConnectorKey(null);
     }
   };
 
@@ -198,46 +257,133 @@ export const PluginsPanel = () => {
           </div>
         </div>
 
-        <div className={sectionStyle}>
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-white">Current provider profile</p>
-              <p className="mt-1 text-sm text-slate-400">
-                {providerPreset.label} via {config.baseUrl}
-              </p>
+        <div className="space-y-4">
+          <div className={sectionStyle}>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-white">Current provider profile</p>
+                <p className="mt-1 text-sm text-slate-400">
+                  {providerPreset.label} via {config.baseUrl}
+                </p>
+              </div>
+              <span className={`rounded-full border px-3 py-1 text-xs ${capabilityTone(capabilities.recommendedForAgent)}`}>
+                {capabilities.recommendedForAgent ? 'Agent-ready profile' : 'Use with caution'}
+              </span>
             </div>
-            <span className={`rounded-full border px-3 py-1 text-xs ${capabilityTone(capabilities.recommendedForAgent)}`}>
-              {capabilities.recommendedForAgent ? 'Agent-ready profile' : 'Use with caution'}
-            </span>
+
+            <div className="mt-4 flex flex-wrap gap-2 text-xs">
+              <span className={`rounded-full border px-3 py-1 ${capabilityTone(capabilities.streaming !== 'limited')}`}>
+                Streaming {capabilities.streaming}
+              </span>
+              <span className={`rounded-full border px-3 py-1 ${capabilityTone(capabilities.toolCalling !== 'limited')}`}>
+                Tool calling {capabilities.toolCalling}
+              </span>
+              <span className="rounded-full border border-sky-300/30 bg-sky-300/10 px-3 py-1 text-sky-100">
+                Transport {capabilities.transport}
+              </span>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Available provider presets</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {LLM_PROVIDER_PRESETS.map((preset) => (
+                  <span
+                    key={preset.id}
+                    className={`rounded-full border px-3 py-1.5 text-xs ${
+                      preset.id === config.providerId
+                        ? 'border-sky-300/30 bg-sky-300/10 text-sky-100'
+                        : 'border-white/10 bg-white/5 text-slate-300'
+                    }`}
+                  >
+                    {preset.label}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-2 text-xs">
-            <span className={`rounded-full border px-3 py-1 ${capabilityTone(capabilities.streaming !== 'limited')}`}>
-              Streaming {capabilities.streaming}
-            </span>
-            <span className={`rounded-full border px-3 py-1 ${capabilityTone(capabilities.toolCalling !== 'limited')}`}>
-              Tool calling {capabilities.toolCalling}
-            </span>
-            <span className="rounded-full border border-sky-300/30 bg-sky-300/10 px-3 py-1 text-sky-100">
-              Transport {capabilities.transport}
-            </span>
-          </div>
+          <div className={sectionStyle}>
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-white">MCP connectors</p>
+                <p className="mt-1 text-sm text-slate-400">
+                  {readyMcpConnectors} ready, {mcpConnectors.length} declared across enabled or disabled plugins.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void pluginRuntime.refreshMcpConnectors()}
+                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/10"
+              >
+                Refresh MCP
+              </button>
+            </div>
 
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Available provider presets</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {LLM_PROVIDER_PRESETS.map((preset) => (
-                <span
-                  key={preset.id}
-                  className={`rounded-full border px-3 py-1.5 text-xs ${
-                    preset.id === config.providerId
-                      ? 'border-sky-300/30 bg-sky-300/10 text-sky-100'
-                      : 'border-white/10 bg-white/5 text-slate-300'
-                  }`}
-                >
-                  {preset.label}
-                </span>
-              ))}
+            <div className="mt-4 space-y-3">
+              {mcpConnectors.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-black/10 p-4 text-sm text-slate-500">
+                  No MCP connectors declared. Add mcpConnectors to a plugin manifest.
+                </div>
+              ) : (
+                mcpConnectors.map((connector) => {
+                  const key = connectorKey(connector);
+                  const lastCheck = connectorChecks[key];
+
+                  return (
+                    <article key={key} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-white">{connector.name}</p>
+                            <span className={cn('rounded-full border px-2.5 py-1 text-[11px] uppercase tracking-[0.18em]', connectorStatusTone(connector.status))}>
+                              {connector.status}
+                            </span>
+                            <span className="rounded-full border border-sky-300/30 bg-sky-300/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.18em] text-sky-100">
+                              {connector.transport}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-slate-400">{connector.description}</p>
+                          <p className="mt-2 truncate text-xs text-slate-500">{connector.pluginName} / {connectorTarget(connector)}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void checkConnector(connector)}
+                          disabled={checkingConnectorKey === key || connector.status !== 'ready'}
+                          className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {checkingConnectorKey === key ? 'Checking...' : 'Health check'}
+                        </button>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                        {connector.pluginPermissions.map((permission) => (
+                          <span key={permission} className="rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-amber-100">
+                            {permission}
+                          </span>
+                        ))}
+                        {connector.env ? (
+                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">
+                            {Object.keys(connector.env).length} env values
+                          </span>
+                        ) : null}
+                        {connector.headers ? (
+                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">
+                            {Object.keys(connector.headers).length} headers
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <p className="mt-3 text-xs text-slate-500">{connector.statusDetail}</p>
+                      {lastCheck ? (
+                        <div className={cn('mt-3 rounded-2xl border px-3 py-2 text-xs', connectorStatusTone(lastCheck.status))}>
+                          <p className="font-semibold">{lastCheck.status}: {lastCheck.detail}</p>
+                          {lastCheck.responseSummary ? <p className="mt-1 text-slate-200/80">{lastCheck.responseSummary}</p> : null}
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>

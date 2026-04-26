@@ -6,6 +6,7 @@ import type {
   AutomationRecord,
   AutomationRunRecord,
   CancelChatRequest,
+  CheckMcpConnectorInput,
   ChatStreamEvent,
   CreateSafeTaskCloneInput,
   CreateAutomationInput,
@@ -20,6 +21,8 @@ import type {
   GitDiffResult,
   GitPullRequestPrep,
   GitReviewSnapshot,
+  McpConnectorCheckResult,
+  McpConnectorRecord,
   PersistedSessionPayload,
   PersistedSessionSummary,
   PluginRecord,
@@ -78,6 +81,9 @@ export const runAutomation = (automationId: string): Promise<AutomationRunRecord
 export const listPlugins = (): Promise<PluginRecord[]> => requireDesktopApi().listPlugins();
 export const updatePluginState = (input: UpdatePluginStateInput): Promise<PluginRecord> =>
   requireDesktopApi().updatePluginState(input);
+export const listMcpConnectors = (): Promise<McpConnectorRecord[]> => requireDesktopApi().listMcpConnectors();
+export const checkMcpConnector = (input: CheckMcpConnectorInput): Promise<McpConnectorCheckResult> =>
+  requireDesktopApi().checkMcpConnector(input);
 export const createSafeTaskClone = (input: CreateSafeTaskCloneInput): Promise<TaskCloneResult> =>
   requireDesktopApi().createSafeTaskClone(input);
 export const discardSafeTaskClone = (clonePath: string): Promise<void> =>

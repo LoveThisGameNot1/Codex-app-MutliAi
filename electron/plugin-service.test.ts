@@ -44,18 +44,63 @@ describe('parsePluginManifest', () => {
         { kind: 'invalid', name: 'bad', description: 'Ignored.' },
       ],
       permissions: ['readWorkspace', 'readWorkspace', 'badPermission'],
+      mcpConnectors: [
+        {
+          id: 'docs',
+          name: 'Docs Server',
+          description: 'Local documentation server.',
+          transport: 'stdio',
+          command: 'node',
+          args: ['server.mjs'],
+          env: { DOCS_MODE: 'test' },
+          timeoutMs: 2500,
+        },
+      ],
     });
 
     expect(manifest.capabilities).toEqual([
       { kind: 'tool', name: 'example_tool', description: 'Runs an example tool.' },
     ]);
     expect(manifest.permissions).toEqual(['readWorkspace']);
+    expect(manifest.mcpConnectors).toEqual([
+      {
+        id: 'docs',
+        name: 'Docs Server',
+        description: 'Local documentation server.',
+        transport: 'stdio',
+        command: 'node',
+        args: ['server.mjs'],
+        env: { DOCS_MODE: 'test' },
+        timeoutMs: 2500,
+      },
+    ]);
   });
 
   it('rejects manifests without required identity fields', () => {
     expect(() => parsePluginManifest({ id: '', name: '', version: '', description: '' })).toThrow(
       'Plugin manifest needs a valid id.',
     );
+  });
+
+  it('rejects MCP connectors without transport-specific endpoints', () => {
+    expect(() =>
+      parsePluginManifest({
+        id: 'example.plugin',
+        name: 'Example Plugin',
+        version: '1.0.0',
+        description: 'Example local plugin.',
+        capabilities: [{ kind: 'mcp', name: 'broken', description: 'Broken connector.' }],
+        permissions: ['networkAccess'],
+        mcpConnectors: [
+          {
+            id: 'broken-http',
+            name: 'Broken HTTP',
+            description: 'Missing URL.',
+            transport: 'http',
+          },
+        ],
+      }),
+    ).toThrow('MCP connector broken-http with http transport needs a url.');
   });
 });
 
@@ -69,6 +114,7 @@ describe('PluginService', () => {
       description: 'Example plugin.',
       capabilities: [{ kind: 'skill', name: 'example_skill', description: 'Adds a skill.' }],
       permissions: ['readWorkspace'],
+      mcpConnectors: [],
     });
 
     const plugins = await new PluginService(workspaceRoot, userDataPath).listPlugins();
@@ -91,6 +137,7 @@ describe('PluginService', () => {
       description: 'Example plugin.',
       capabilities: [{ kind: 'tool', name: 'example_tool', description: 'Adds a tool.' }],
       permissions: ['readWorkspace'],
+      mcpConnectors: [],
     });
 
     const firstService = new PluginService(workspaceRoot, userDataPath);
@@ -123,5 +170,45 @@ describe('PluginService', () => {
     await expect(service.updatePluginState({ id: 'broken', enabled: true })).rejects.toThrow(
       'Plugin broken is invalid and cannot be enabled.',
     );
+  });
+
+  it('lists MCP connectors with plugin enablement status', async () => {
+    const { workspaceRoot, userDataPath } = await createWorkspace();
+    await writePluginManifest(workspaceRoot, 'example', {
+      id: 'example',
+      name: 'Example',
+      version: '1.0.0',
+      description: 'Example plugin.',
+      capabilities: [{ kind: 'mcp', name: 'docs', description: 'Adds an MCP connector.' }],
+      permissions: ['executeCommands'],
+      mcpConnectors: [
+        {
+          id: 'docs',
+          name: 'Docs MCP',
+          description: 'Local docs connector.',
+          transport: 'stdio',
+          command: 'node',
+          args: ['server.mjs'],
+        },
+      ],
+    });
+
+    const service = new PluginService(workspaceRoot, userDataPath);
+    const disabledConnectors = await service.listMcpConnectors();
+    await service.updatePluginState({ id: 'example', enabled: true });
+    const enabledConnectors = await service.listMcpConnectors();
+
+    expect(disabledConnectors[0]).toMatchObject({
+      id: 'docs',
+      pluginId: 'example',
+      pluginName: 'Example',
+      status: 'disabled',
+      pluginPermissions: ['executeCommands'],
+    });
+    expect(enabledConnectors[0]).toMatchObject({
+      id: 'docs',
+      pluginId: 'example',
+      status: 'ready',
+    });
   });
 });

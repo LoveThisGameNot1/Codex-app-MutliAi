@@ -10,6 +10,7 @@ import type {
   DesktopAppInfo,
   GitInlineReviewComment,
   GitReviewSnapshot,
+  McpConnectorRecord,
   MessageStatus,
   MessageRole,
   PersistedSessionSummary,
@@ -66,6 +67,7 @@ export type AppState = {
   automations: AutomationRecord[];
   automationRuns: AutomationRunRecord[];
   plugins: PluginRecord[];
+  mcpConnectors: McpConnectorRecord[];
   gitReview: GitReviewSnapshot | null;
   gitReviewComments: GitInlineReviewComment[];
   acknowledgedAutomationRunIds: string[];
@@ -98,6 +100,7 @@ export type AppState = {
   setAutomations: (automations: AutomationRecord[]) => void;
   setAutomationRuns: (runs: AutomationRunRecord[]) => void;
   setPlugins: (plugins: PluginRecord[]) => void;
+  setMcpConnectors: (connectors: McpConnectorRecord[]) => void;
   setGitReview: (review: GitReviewSnapshot | null) => void;
   addGitReviewComment: (input: { filePath: string; lineNumber: number; body: string }) => string;
   resolveGitReviewComment: (commentId: string) => void;
@@ -218,6 +221,7 @@ export const useAppStore = create<AppState>()(
         automations: [],
         automationRuns: [],
         plugins: [],
+        mcpConnectors: [],
         gitReview: null,
         gitReviewComments: [],
         acknowledgedAutomationRunIds: [],
@@ -319,6 +323,7 @@ export const useAppStore = create<AppState>()(
           };
         }),
       setPlugins: (plugins) => set({ plugins }),
+      setMcpConnectors: (mcpConnectors) => set({ mcpConnectors }),
       setGitReview: (gitReview) => set({ gitReview }),
       addGitReviewComment: ({ filePath, lineNumber, body }) => {
         const commentId = createId();
