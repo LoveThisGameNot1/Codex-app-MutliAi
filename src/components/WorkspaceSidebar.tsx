@@ -37,6 +37,16 @@ const ReviewIcon = () => (
   </svg>
 );
 
+const PlannerIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={iconClassName}>
+    <path d="M7 4.5h10" />
+    <path d="M7 9h10" />
+    <path d="M7 13.5h6" />
+    <path d="M5 19.5 3.5 18l1.5-1.5" />
+    <path d="M9 18h11" />
+  </svg>
+);
+
 const ClockIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={iconClassName}>
     <circle cx="12" cy="12" r="8" />
@@ -75,6 +85,7 @@ const sectionDescriptions: Record<WorkspaceSection, string> = {
   search: 'Search everything',
   review: 'Review changed files',
   plugins: 'Provider and tool integrations',
+  planner: 'Structured execution plans',
   automations: 'Scheduled work and runs',
   settings: 'Runtime configuration',
 };
@@ -104,6 +115,7 @@ export const WorkspaceSidebar = () => {
   const persistedSessions = useAppStore((state) => state.persistedSessions);
   const sessionId = useAppStore((state) => state.sessionId);
   const automations = useAppStore((state) => state.automations);
+  const plans = useAppStore((state) => state.plans);
   const automationRuns = useAppStore((state) => state.automationRuns);
   const acknowledgedAutomationRunIds = useAppStore((state) => state.acknowledgedAutomationRunIds);
   const workspaceSection = useAppStore((state) => state.workspaceSection);
@@ -127,6 +139,12 @@ export const WorkspaceSidebar = () => {
     { key: 'search', label: 'Search', icon: <SearchIcon /> },
     { key: 'review', label: 'Review', icon: <ReviewIcon /> },
     { key: 'plugins', label: 'Plugins', icon: <GridIcon /> },
+    {
+      key: 'planner',
+      label: 'Planner',
+      icon: <PlannerIcon />,
+      badge: plans.length > 0 ? String(plans.length) : null,
+    },
     {
       key: 'automations',
       label: 'Automations',

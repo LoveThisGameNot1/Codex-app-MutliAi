@@ -377,6 +377,19 @@ export class ChatRuntime {
         }
         return;
       }
+      case 'plan': {
+        if (invocation.args) {
+          const planId = state.createPlan(invocation.args);
+          if (planId) {
+            state.addSystemMessage(activeTask.id, `Created a structured plan for "${invocation.args}".`);
+          }
+          return;
+        }
+
+        state.setWorkspaceSection('planner');
+        state.addSystemMessage(activeTask.id, 'Opened the planner.');
+        return;
+      }
       case 'safe-clone': {
         if (activeTask.requestId) {
           state.addSystemMessage(activeTask.id, 'Cannot activate a safe clone while this task is running.', 'error');

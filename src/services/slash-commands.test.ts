@@ -40,7 +40,7 @@ describe('slash command registry', () => {
   });
 
   it('suggests commands while the user types', () => {
-    expect(getSlashCommandSuggestions('/pl').map((command) => command.id)).toEqual(['plugins']);
+    expect(getSlashCommandSuggestions('/plug').map((command) => command.id)).toEqual(['plugins']);
     expect(getSlashCommandSuggestions('/').length).toBeGreaterThan(4);
     expect(getSlashCommandSuggestions('/plugins now')).toEqual([]);
   });
@@ -63,6 +63,7 @@ describe('slash command registry', () => {
     expect(help).toContain('**Navigation**');
     expect(help).toContain('**Workspace**');
     expect(help).toContain('**Agent workflows**');
+    expect(help).toContain('`/plan Optional goal`');
     expect(help).toContain('`/code-review Optional scope`');
   });
 });

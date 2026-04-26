@@ -76,7 +76,7 @@ Why this matters:
 ## Priority 6: Hooks, Commands, And Reusable Workflows
 
 - [x] Add slash-command support for frequent workflows.
-- [ ] Add a planning tool for breaking larger goals into structured execution steps.
+- [x] Add a planning tool for breaking larger goals into structured execution steps.
 - [ ] Add prompt hooks / tool hooks / post-run hooks.
 - [ ] Add reusable workflow templates for tasks like code review, release prep, dependency audits, and UI generation.
 - [ ] Allow automations to invoke these workflows directly.

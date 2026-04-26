@@ -32,6 +32,12 @@ import {
   type WorkspaceTask,
   type WorkspaceTaskStatus,
 } from '@/services/workspace-task';
+import {
+  createPlanFromGoal,
+  updatePlanStepStatus as updatePlanStepStatusRecord,
+  type PlanRecord,
+  type PlanStepStatus,
+} from '@/services/planning';
 
 const nowIso = (): string => new Date().toISOString();
 const createId = (): string =>
@@ -42,7 +48,7 @@ const createId = (): string =>
 const createSessionId = (): string => createId();
 const MAX_ACKNOWLEDGED_AUTOMATION_RUN_IDS = 200;
 
-export type WorkspaceSection = 'chat' | 'search' | 'review' | 'plugins' | 'automations' | 'settings';
+export type WorkspaceSection = 'chat' | 'search' | 'review' | 'plugins' | 'planner' | 'automations' | 'settings';
 
 const createDefaultTask = (workspaceSessionId: string): WorkspaceTask =>
   createWorkspaceTask({
@@ -68,6 +74,9 @@ export type AppState = {
   automationRuns: AutomationRunRecord[];
   plugins: PluginRecord[];
   mcpConnectors: McpConnectorRecord[];
+  plans: PlanRecord[];
+  activePlanId: string | null;
+  planGoalDraft: string;
   gitReview: GitReviewSnapshot | null;
   gitReviewComments: GitInlineReviewComment[];
   acknowledgedAutomationRunIds: string[];
@@ -101,6 +110,11 @@ export type AppState = {
   setAutomationRuns: (runs: AutomationRunRecord[]) => void;
   setPlugins: (plugins: PluginRecord[]) => void;
   setMcpConnectors: (connectors: McpConnectorRecord[]) => void;
+  setPlanGoalDraft: (goal: string) => void;
+  createPlan: (goal: string) => string | null;
+  setActivePlanId: (planId: string | null) => void;
+  updatePlanStepStatus: (planId: string, stepId: string, status: PlanStepStatus) => void;
+  deletePlan: (planId: string) => void;
   setGitReview: (review: GitReviewSnapshot | null) => void;
   addGitReviewComment: (input: { filePath: string; lineNumber: number; body: string }) => string;
   resolveGitReviewComment: (commentId: string) => void;
@@ -222,6 +236,9 @@ export const useAppStore = create<AppState>()(
         automationRuns: [],
         plugins: [],
         mcpConnectors: [],
+        plans: [],
+        activePlanId: null,
+        planGoalDraft: '',
         gitReview: null,
         gitReviewComments: [],
         acknowledgedAutomationRunIds: [],
@@ -324,6 +341,46 @@ export const useAppStore = create<AppState>()(
         }),
       setPlugins: (plugins) => set({ plugins }),
       setMcpConnectors: (mcpConnectors) => set({ mcpConnectors }),
+      setPlanGoalDraft: (planGoalDraft) => set({ planGoalDraft }),
+      createPlan: (goal) => {
+        const normalizedGoal = goal.trim();
+        if (!normalizedGoal) {
+          return null;
+        }
+
+        const planId = createId();
+        const plan = createPlanFromGoal({
+          id: planId,
+          goal: normalizedGoal,
+          createdAt: nowIso(),
+        });
+        set((state) => ({
+          plans: [plan, ...state.plans],
+          activePlanId: plan.id,
+          planGoalDraft: '',
+          workspaceSection: 'planner',
+          settingsOpen: false,
+        }));
+        return planId;
+      },
+      setActivePlanId: (activePlanId) =>
+        set((state) => ({
+          activePlanId: activePlanId && state.plans.some((plan) => plan.id === activePlanId) ? activePlanId : null,
+        })),
+      updatePlanStepStatus: (planId, stepId, status) =>
+        set((state) => ({
+          plans: state.plans.map((plan) =>
+            plan.id === planId ? updatePlanStepStatusRecord(plan, stepId, status, nowIso()) : plan,
+          ),
+        })),
+      deletePlan: (planId) =>
+        set((state) => {
+          const plans = state.plans.filter((plan) => plan.id !== planId);
+          return {
+            plans,
+            activePlanId: state.activePlanId === planId ? plans[0]?.id ?? null : state.activePlanId,
+          };
+        }),
       setGitReview: (gitReview) => set({ gitReview }),
       addGitReviewComment: ({ filePath, lineNumber, body }) => {
         const commentId = createId();
@@ -722,6 +779,9 @@ export const useAppStore = create<AppState>()(
         automations: state.automations,
         automationRuns: state.automationRuns,
         plugins: state.plugins,
+        plans: state.plans,
+        activePlanId: state.activePlanId,
+        planGoalDraft: state.planGoalDraft,
         gitReview: state.gitReview,
         gitReviewComments: state.gitReviewComments,
         acknowledgedAutomationRunIds: state.acknowledgedAutomationRunIds,

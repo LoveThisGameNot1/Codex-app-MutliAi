@@ -9,6 +9,7 @@ export type SlashCommandId =
   | 'search'
   | 'review'
   | 'plugins'
+  | 'plan'
   | 'automations'
   | 'settings'
   | 'safe-clone'
@@ -101,6 +102,16 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     category: 'navigation',
     kind: 'local',
     targetSection: 'plugins',
+  },
+  {
+    id: 'plan',
+    aliases: ['planner', 'breakdown'],
+    title: 'Open planner',
+    summary: 'Opens the planning tool or creates a structured plan from the provided goal.',
+    usage: '/plan Optional goal',
+    category: 'workspace',
+    kind: 'local',
+    targetSection: 'planner',
   },
   {
     id: 'automations',

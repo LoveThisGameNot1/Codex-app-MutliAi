@@ -86,6 +86,9 @@ const resetStore = (): void => {
     automationRuns: [],
     plugins: [],
     mcpConnectors: [],
+    plans: [],
+    activePlanId: null,
+    planGoalDraft: '',
     gitReview: null,
     gitReviewComments: [],
     acknowledgedAutomationRunIds: [],
@@ -224,6 +227,26 @@ describe('ChatRuntime', () => {
       role: 'user',
       content: expect.stringContaining('Run a rigorous code review for changed files.'),
     });
+
+    runtime.dispose();
+  });
+
+  it('creates a structured plan from the plan slash command', async () => {
+    const runtime = new ChatRuntime();
+    runtime.initialize();
+
+    useAppStore.getState().setComposerValue('/plan Add provider health diagnostics');
+    await runtime.sendCurrentComposerMessage();
+
+    const state = useAppStore.getState();
+    expect(runtimeMocks.startChatMock).not.toHaveBeenCalled();
+    expect(state.workspaceSection).toBe('planner');
+    expect(state.plans).toHaveLength(1);
+    expect(state.plans[0]).toMatchObject({
+      goal: 'Add provider health diagnostics',
+      status: 'draft',
+    });
+    expect(state.activePlanId).toBe(state.plans[0]?.id);
 
     runtime.dispose();
   });

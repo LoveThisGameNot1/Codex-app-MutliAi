@@ -4,6 +4,7 @@ import { AutomationInbox } from '@/components/AutomationInbox';
 import { AutomationPanel } from '@/components/AutomationPanel';
 import { ChatComposer } from '@/components/ChatComposer';
 import { MarkdownMessage } from '@/components/MarkdownMessage';
+import { PlannerPanel } from '@/components/PlannerPanel';
 import { PluginsPanel } from '@/components/PluginsPanel';
 import { ReviewPanel } from '@/components/ReviewPanel';
 import { SearchPanel } from '@/components/SearchPanel';
@@ -51,6 +52,12 @@ const sectionMeta = {
     title: 'Inspect active providers and tool surfaces',
     description:
       'See which integrations are live today and how the current model profile affects agent-style behavior.',
+  },
+  planner: {
+    kicker: 'Execution Planner',
+    title: 'Plan larger goals before running agents',
+    description:
+      'Break broad work into concrete steps, track progress, and queue structured plans back into chat.',
   },
   automations: {
     kicker: 'Automation Center',
@@ -186,6 +193,8 @@ export const ChatPanel = () => {
         return <SearchPanel />;
       case 'plugins':
         return <PluginsPanel />;
+      case 'planner':
+        return <PlannerPanel />;
       case 'review':
         return <ReviewPanel />;
       case 'automations':

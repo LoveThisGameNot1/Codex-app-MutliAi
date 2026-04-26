@@ -24,6 +24,7 @@ Slash commands are handled before a message is sent to the model:
 
 ## Workspace
 
+- `/plan Optional goal`: open the planner, or create a structured plan from a provided goal.
 - `/safe-clone`: move the active task into an isolated safe workspace clone.
 - `/live-workspace`: discard the active task clone and return to the live workspace.
 
