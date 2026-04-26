@@ -188,8 +188,17 @@ export class McpConnectorService {
         }
         settled = true;
         clearTimeout(timeout);
+        if (child.exitCode !== null || child.signalCode !== null) {
+          resolve(result);
+          return;
+        }
+
+        const resolveAfterClose = (): void => {
+          resolve(result);
+        };
+        child.once('close', resolveAfterClose);
         cleanup();
-        resolve(result);
+        setTimeout(resolveAfterClose, 250).unref();
       };
 
       const timeout = setTimeout(() => {

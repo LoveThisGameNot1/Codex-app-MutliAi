@@ -24,6 +24,12 @@ const runtimeMocks = vi.hoisted(() => ({
   loadSessionMock: vi.fn(async () => null),
   deleteSessionMock: vi.fn(async () => undefined),
   resolveToolApprovalMock: vi.fn(async () => undefined),
+  createSafeTaskCloneMock: vi.fn(async () => ({
+    clonePath: 'C:/tmp/codexapp-clone',
+    sourcePath: 'C:/workspace',
+    createdAt: '2026-04-21T19:00:00.000Z',
+  })),
+  discardSafeTaskCloneMock: vi.fn(async () => undefined),
 }));
 
 vi.mock('./electron-api', () => ({
@@ -35,6 +41,8 @@ vi.mock('./electron-api', () => ({
   loadSession: runtimeMocks.loadSessionMock,
   deleteSession: runtimeMocks.deleteSessionMock,
   resolveToolApproval: runtimeMocks.resolveToolApprovalMock,
+  createSafeTaskClone: runtimeMocks.createSafeTaskCloneMock,
+  discardSafeTaskClone: runtimeMocks.discardSafeTaskCloneMock,
   onChatEvent: (listener: (event: ChatStreamEvent) => void) => {
     runtimeMocks.chatEventListener = listener;
     return () => {
@@ -76,6 +84,10 @@ const resetStore = (): void => {
     persistedSessions: [],
     automations: [],
     automationRuns: [],
+    plugins: [],
+    mcpConnectors: [],
+    gitReview: null,
+    gitReviewComments: [],
     acknowledgedAutomationRunIds: [],
     composerValue: '',
     isStreaming: false,
@@ -103,6 +115,8 @@ describe('ChatRuntime', () => {
     runtimeMocks.loadSessionMock.mockClear();
     runtimeMocks.deleteSessionMock.mockClear();
     runtimeMocks.resolveToolApprovalMock.mockClear();
+    runtimeMocks.createSafeTaskCloneMock.mockClear();
+    runtimeMocks.discardSafeTaskCloneMock.mockClear();
     runtimeMocks.startChatMock.mockResolvedValue(undefined);
     runtimeMocks.cancelChatMock.mockResolvedValue(undefined);
     runtimeMocks.resetChatMock.mockResolvedValue(undefined);
@@ -173,6 +187,43 @@ describe('ChatRuntime', () => {
     expect(rootAssistant?.content).toBe('Root response');
     expect(childAssistant?.content).toBe('Child response');
     expect(state.isStreaming).toBe(false);
+
+    runtime.dispose();
+  });
+
+  it('handles local slash commands without starting a chat run', async () => {
+    const runtime = new ChatRuntime();
+    runtime.initialize();
+
+    useAppStore.getState().setComposerValue('/help');
+    await runtime.sendCurrentComposerMessage();
+
+    const state = useAppStore.getState();
+    expect(runtimeMocks.startChatMock).not.toHaveBeenCalled();
+    expect(state.composerValue).toBe('');
+    expect(state.messages.at(-1)).toMatchObject({
+      role: 'system',
+      content: expect.stringContaining('Available slash commands:'),
+      status: 'complete',
+    });
+
+    runtime.dispose();
+  });
+
+  it('expands prompt-template slash commands into agent runs', async () => {
+    const runtime = new ChatRuntime();
+    runtime.initialize();
+
+    useAppStore.getState().setComposerValue('/code-review changed files');
+    await runtime.sendCurrentComposerMessage();
+
+    expect(runtimeMocks.startChatMock).toHaveBeenCalledTimes(1);
+    const [request] = runtimeMocks.startChatMock.mock.calls.map(([call]) => call);
+    expect(request.message).toContain('Run a rigorous code review for changed files.');
+    expect(useAppStore.getState().messages[0]).toMatchObject({
+      role: 'user',
+      content: expect.stringContaining('Run a rigorous code review for changed files.'),
+    });
 
     runtime.dispose();
   });

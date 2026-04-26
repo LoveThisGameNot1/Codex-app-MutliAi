@@ -16,6 +16,12 @@ import { ArtifactStreamParser } from './artifact-stream-parser';
 import { hydratePersistedSession } from './session-hydrator';
 import { useAppStore } from '@/store/app-store';
 import { createTaskTitleFromPrompt } from '@/services/workspace-task';
+import {
+  createSlashCommandPrompt,
+  formatSlashCommandHelp,
+  parseSlashCommand,
+  type SlashCommandInvocation,
+} from '@/services/slash-commands';
 
 const createId = (): string =>
   typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -131,7 +137,18 @@ export class ChatRuntime {
     const state = useAppStore.getState();
     const content = state.composerValue.trim();
     const activeTask = state.workspaceTasks.find((task) => task.id === state.activeTaskId);
-    if (!content || !activeTask || activeTask.requestId) {
+    if (!content || !activeTask) {
+      return;
+    }
+
+    const slashCommand = parseSlashCommand(content);
+    if (slashCommand) {
+      state.setComposerValue('');
+      await this.executeSlashCommand(slashCommand);
+      return;
+    }
+
+    if (activeTask.requestId) {
       return;
     }
 
@@ -299,6 +316,95 @@ export class ChatRuntime {
     this.unsubscribe?.();
     this.unsubscribe = null;
     this.activeRuns.clear();
+  }
+
+  private async executeSlashCommand(invocation: SlashCommandInvocation): Promise<void> {
+    const state = useAppStore.getState();
+    const activeTask = state.workspaceTasks.find((task) => task.id === state.activeTaskId);
+    if (!activeTask) {
+      return;
+    }
+
+    if (!invocation.matched) {
+      state.addSystemMessage(activeTask.id, invocation.error, 'error');
+      return;
+    }
+
+    const command = invocation.command;
+
+    if (command.kind === 'prompt-template') {
+      if (activeTask.requestId) {
+        state.addSystemMessage(
+          activeTask.id,
+          `Cannot run ${command.usage} while the active task is already running.`,
+          'error',
+        );
+        return;
+      }
+
+      await this.startTaskMessage(activeTask.id, createSlashCommandPrompt(command, invocation.args));
+      return;
+    }
+
+    switch (command.id) {
+      case 'help': {
+        state.addSystemMessage(activeTask.id, formatSlashCommandHelp());
+        return;
+      }
+      case 'new': {
+        const title = invocation.args || 'New task';
+        const taskId = state.createTask({ title });
+        useAppStore.getState().addSystemMessage(taskId, `Created task "${title}".`);
+        return;
+      }
+      case 'reset': {
+        await this.resetConversation();
+        const nextState = useAppStore.getState();
+        const nextTask = nextState.workspaceTasks.find((task) => task.id === nextState.activeTaskId);
+        if (nextTask) {
+          nextState.addSystemMessage(nextTask.id, 'Started a fresh session from /reset.');
+        }
+        return;
+      }
+      case 'search':
+      case 'review':
+      case 'plugins':
+      case 'automations':
+      case 'settings': {
+        if (command.targetSection) {
+          state.setWorkspaceSection(command.targetSection);
+          state.addSystemMessage(activeTask.id, `Opened ${command.title.toLowerCase()}.`);
+        }
+        return;
+      }
+      case 'safe-clone': {
+        if (activeTask.requestId) {
+          state.addSystemMessage(activeTask.id, 'Cannot activate a safe clone while this task is running.', 'error');
+          return;
+        }
+        if (activeTask.isolationMode === 'safe-clone') {
+          state.addSystemMessage(activeTask.id, 'This task is already using a safe clone.');
+          return;
+        }
+        await this.activateSafeClone(activeTask.id);
+        return;
+      }
+      case 'live-workspace': {
+        if (activeTask.requestId) {
+          state.addSystemMessage(activeTask.id, 'Cannot return to the live workspace while this task is running.', 'error');
+          return;
+        }
+        if (activeTask.isolationMode !== 'safe-clone') {
+          state.addSystemMessage(activeTask.id, 'This task is already using the live workspace.');
+          return;
+        }
+        await this.returnTaskToWorkspace(activeTask.id);
+        return;
+      }
+      default: {
+        state.addSystemMessage(activeTask.id, `Slash command ${command.usage} is not wired yet.`, 'error');
+      }
+    }
   }
 
   private async handleEvent(event: ChatStreamEvent): Promise<void> {

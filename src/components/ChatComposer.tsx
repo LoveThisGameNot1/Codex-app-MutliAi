@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { inferConfiguredModelCapabilities } from '../../shared/model-capabilities';
 import { useAppStore } from '@/store/app-store';
 import { chatRuntime } from '@/services/chat-runtime';
+import { getSlashCommandSuggestions } from '@/services/slash-commands';
 
 export const ChatComposer = () => {
   const composerValue = useAppStore((state) => state.composerValue);
@@ -18,6 +19,7 @@ export const ChatComposer = () => {
     [],
   );
   const selectedModelCapabilities = useMemo(() => inferConfiguredModelCapabilities(config), [config]);
+  const slashCommandSuggestions = useMemo(() => getSlashCommandSuggestions(composerValue, 6), [composerValue]);
   const approvalGuardsEnabled = useMemo(
     () => Object.values(config.toolPolicy).some((mode) => mode !== 'allow'),
     [config.toolPolicy],
@@ -78,11 +80,37 @@ export const ChatComposer = () => {
         placeholder={placeholder}
         className="min-h-[132px] w-full resize-none rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm text-slate-100 outline-none ring-0 placeholder:text-slate-500 focus:border-sky-400/40"
       />
+      {slashCommandSuggestions.length > 0 ? (
+        <div className="mt-3 rounded-2xl border border-sky-300/20 bg-sky-400/10 p-2">
+          <div className="mb-2 flex items-center justify-between px-2">
+            <p className="text-xs uppercase tracking-[0.22em] text-sky-100/80">Slash commands</p>
+            <span className="text-xs text-slate-400">Enter runs the selected text</span>
+          </div>
+          <div className="grid gap-2 lg:grid-cols-2">
+            {slashCommandSuggestions.map((command) => (
+              <button
+                key={command.id}
+                type="button"
+                onClick={() => setComposerValue(`/${command.id}${command.kind === 'prompt-template' ? ' ' : ''}`)}
+                className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2 text-left transition hover:border-sky-300/30 hover:bg-sky-300/10"
+              >
+                <span className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-slate-100">{command.usage}</span>
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                    {command.category}
+                  </span>
+                </span>
+                <span className="mt-1 block text-xs leading-5 text-slate-400">{command.summary}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <p className="text-xs text-slate-500">
-            `Enter` sends, `Shift + Enter` inserts a newline. Tools run in the Electron main process.
+            `Enter` sends, `Shift + Enter` inserts a newline. Type `/` for commands.
           </p>
           <p className="text-xs text-slate-500">
             Active task mode:{' '}
