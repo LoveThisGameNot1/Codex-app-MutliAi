@@ -22,6 +22,7 @@ import {
   ChatStreamEvent,
   CreateAutomationInput,
   DEFAULT_SYSTEM_PROMPT,
+  HookExecutionRecord,
   ModelCatalogResult,
   ResolveToolApprovalInput,
   StartChatRequest,
@@ -50,6 +51,7 @@ import {
 import type { ToolPolicyViolation } from './tool-policy';
 import { SessionStore } from './session-store';
 import { ApprovalRegistry } from './approval-registry';
+import { createPromptHookInput, HookService } from './hook-service';
 
 const nowIso = (): string => new Date().toISOString();
 const MAX_NATIVE_OUTPUT_TOKENS = 4096;
@@ -174,6 +176,8 @@ export class LlmService {
   private readonly activeRunners = new Map<string, ReturnType<OpenAI['chat']['completions']['runTools']>>();
   private readonly activeAbortControllers = new Map<string, AbortController>();
   private readonly approvalRegistry = new ApprovalRegistry();
+  private readonly hookService = new HookService();
+  private readonly runHookState = new Map<string, { toolCount: number }>();
   private readonly initializationPromise: Promise<void>;
   private automationTooling: AutomationTooling | null = null;
 
@@ -477,28 +481,32 @@ export class LlmService {
 
   private async startCompatibleChat(request: StartChatRequest, emitEvent: EmitEvent): Promise<void> {
     const { config, message, requestId, sessionId } = request;
+    this.beginHookedRun(requestId);
     const provider = getProviderPreset(config.providerId);
     const baseURL = resolveBaseUrl(provider.id, config.baseUrl);
     const apiKey = config.apiKey.trim();
 
     if (!apiKey && !isApiKeyOptionalForProvider(provider.id, baseURL)) {
+      await this.applyPostRunHooks(request, 'failed', undefined, `No API key is configured for ${provider.label}.`, emitEvent);
       emitEvent({
         type: 'chat.error',
         requestId,
         message: `No API key is configured for ${provider.label}. Add one in the settings panel.`,
         finishedAt: nowIso(),
       });
+      this.runHookState.delete(requestId);
       return;
     }
 
     const client = buildOpenAIClient(config);
     const effectiveWorkingDirectory = request.workingDirectory?.trim() || this.workspaceRoot;
-    const prompt = buildPrompt(config, request.workingDirectory);
+    const hookedPrompt = await this.applyPromptHooks(request, buildPrompt(config, request.workingDirectory), effectiveWorkingDirectory, emitEvent);
+    const prompt = hookedPrompt.systemPrompt;
     const session = this.ensureSession(sessionId, prompt);
 
     session.messages.push({
       role: 'user',
-      content: message,
+      content: hookedPrompt.message,
     });
     await this.persistSession(sessionId, session);
 
@@ -562,19 +570,23 @@ export class LlmService {
     });
 
     runner.on('abort', () => {
-      emitEvent({
-        type: 'chat.cancelled',
-        requestId,
-        finishedAt: nowIso(),
+      void this.applyPostRunHooks(request, 'cancelled', contentSnapshot, undefined, emitEvent).finally(() => {
+        emitEvent({
+          type: 'chat.cancelled',
+          requestId,
+          finishedAt: nowIso(),
+        });
       });
     });
 
     runner.on('error', (error) => {
-      emitEvent({
-        type: 'chat.error',
-        requestId,
-        message: error.message,
-        finishedAt: nowIso(),
+      void this.applyPostRunHooks(request, 'failed', contentSnapshot, error.message, emitEvent).finally(() => {
+        emitEvent({
+          type: 'chat.error',
+          requestId,
+          message: error.message,
+          finishedAt: nowIso(),
+        });
       });
     });
 
@@ -587,6 +599,7 @@ export class LlmService {
       session.messages = [...runner.messages];
       await this.persistSession(sessionId, session);
 
+      await this.applyPostRunHooks(request, 'completed', contentSnapshot, undefined, emitEvent);
       emitEvent({
         type: 'assistant.completed',
         requestId,
@@ -599,6 +612,7 @@ export class LlmService {
       }
 
       const messageText = error instanceof Error ? error.message : 'Unknown OpenAI error';
+      await this.applyPostRunHooks(request, 'failed', contentSnapshot, messageText, emitEvent);
       emitEvent({
         type: 'chat.error',
         requestId,
@@ -609,30 +623,35 @@ export class LlmService {
       this.approvalRegistry.clearRequestState(requestId);
       this.activeRunners.delete(requestId);
       this.activeAbortControllers.delete(requestId);
+      this.runHookState.delete(requestId);
     }
   }
 
   private async startAnthropicChat(request: StartChatRequest, emitEvent: EmitEvent): Promise<void> {
     const { config, message, requestId, sessionId } = request;
+    this.beginHookedRun(requestId);
     const provider = getProviderPreset(config.providerId);
     const apiKey = config.apiKey.trim();
 
     if (!apiKey) {
+      await this.applyPostRunHooks(request, 'failed', undefined, `No API key is configured for ${provider.label}.`, emitEvent);
       emitEvent({
         type: 'chat.error',
         requestId,
         message: `No API key is configured for ${provider.label}. Add one in the settings panel.`,
         finishedAt: nowIso(),
       });
+      this.runHookState.delete(requestId);
       return;
     }
 
     const effectiveWorkingDirectory = request.workingDirectory?.trim() || this.workspaceRoot;
-    const prompt = buildPrompt(config, request.workingDirectory);
+    const hookedPrompt = await this.applyPromptHooks(request, buildPrompt(config, request.workingDirectory), effectiveWorkingDirectory, emitEvent);
+    const prompt = hookedPrompt.systemPrompt;
     const session = this.ensureSession(sessionId, prompt);
     session.messages.push({
       role: 'user',
-      content: message,
+      content: hookedPrompt.message,
     });
     await this.persistSession(sessionId, session);
 
@@ -773,6 +792,7 @@ export class LlmService {
       }
 
       if (abortController.signal.aborted) {
+        await this.applyPostRunHooks(request, 'cancelled', contentSnapshot, undefined, emitEvent);
         emitEvent({
           type: 'chat.cancelled',
           requestId,
@@ -787,6 +807,7 @@ export class LlmService {
       });
       await this.persistSession(sessionId, session);
 
+      await this.applyPostRunHooks(request, 'completed', contentSnapshot, undefined, emitEvent);
       emitEvent({
         type: 'assistant.completed',
         requestId,
@@ -795,6 +816,7 @@ export class LlmService {
       });
     } catch (error) {
       if (abortController.signal.aborted) {
+        await this.applyPostRunHooks(request, 'cancelled', contentSnapshot, undefined, emitEvent);
         emitEvent({
           type: 'chat.cancelled',
           requestId,
@@ -804,6 +826,7 @@ export class LlmService {
       }
 
       const messageText = error instanceof Error ? error.message : 'Unknown Anthropic error';
+      await this.applyPostRunHooks(request, 'failed', contentSnapshot, messageText, emitEvent);
       emitEvent({
         type: 'chat.error',
         requestId,
@@ -813,30 +836,35 @@ export class LlmService {
     } finally {
       this.approvalRegistry.clearRequestState(requestId);
       this.activeAbortControllers.delete(requestId);
+      this.runHookState.delete(requestId);
     }
   }
 
   private async startGeminiChat(request: StartChatRequest, emitEvent: EmitEvent): Promise<void> {
     const { config, message, requestId, sessionId } = request;
+    this.beginHookedRun(requestId);
     const provider = getProviderPreset(config.providerId);
     const apiKey = config.apiKey.trim();
 
     if (!apiKey) {
+      await this.applyPostRunHooks(request, 'failed', undefined, `No API key is configured for ${provider.label}.`, emitEvent);
       emitEvent({
         type: 'chat.error',
         requestId,
         message: `No API key is configured for ${provider.label}. Add one in the settings panel.`,
         finishedAt: nowIso(),
       });
+      this.runHookState.delete(requestId);
       return;
     }
 
     const effectiveWorkingDirectory = request.workingDirectory?.trim() || this.workspaceRoot;
-    const prompt = buildPrompt(config, request.workingDirectory);
+    const hookedPrompt = await this.applyPromptHooks(request, buildPrompt(config, request.workingDirectory), effectiveWorkingDirectory, emitEvent);
+    const prompt = hookedPrompt.systemPrompt;
     const session = this.ensureSession(sessionId, prompt);
     session.messages.push({
       role: 'user',
-      content: message,
+      content: hookedPrompt.message,
     });
     await this.persistSession(sessionId, session);
 
@@ -959,6 +987,7 @@ export class LlmService {
       }
 
       if (abortController.signal.aborted) {
+        await this.applyPostRunHooks(request, 'cancelled', contentSnapshot, undefined, emitEvent);
         emitEvent({
           type: 'chat.cancelled',
           requestId,
@@ -973,6 +1002,7 @@ export class LlmService {
       });
       await this.persistSession(sessionId, session);
 
+      await this.applyPostRunHooks(request, 'completed', contentSnapshot, undefined, emitEvent);
       emitEvent({
         type: 'assistant.completed',
         requestId,
@@ -981,6 +1011,7 @@ export class LlmService {
       });
     } catch (error) {
       if (abortController.signal.aborted) {
+        await this.applyPostRunHooks(request, 'cancelled', contentSnapshot, undefined, emitEvent);
         emitEvent({
           type: 'chat.cancelled',
           requestId,
@@ -990,6 +1021,7 @@ export class LlmService {
       }
 
       const messageText = error instanceof Error ? error.message : 'Unknown Gemini error';
+      await this.applyPostRunHooks(request, 'failed', contentSnapshot, messageText, emitEvent);
       emitEvent({
         type: 'chat.error',
         requestId,
@@ -999,6 +1031,7 @@ export class LlmService {
     } finally {
       this.approvalRegistry.clearRequestState(requestId);
       this.activeAbortControllers.delete(requestId);
+      this.runHookState.delete(requestId);
     }
   }
 
@@ -1020,6 +1053,64 @@ export class LlmService {
     return normalizeBaseUrl(resolveBaseUrl(config.providerId, config.baseUrl)) === normalizeBaseUrl(provider.baseUrl);
   }
 
+  private beginHookedRun(requestId: string): void {
+    this.runHookState.set(requestId, { toolCount: 0 });
+  }
+
+  private incrementHookedToolCount(requestId: string): void {
+    const state = this.runHookState.get(requestId) ?? { toolCount: 0 };
+    state.toolCount += 1;
+    this.runHookState.set(requestId, state);
+  }
+
+  private emitHookRecord(record: HookExecutionRecord, emitEvent: EmitEvent): void {
+    emitEvent({
+      type: record.status === 'completed' ? 'hook.completed' : 'hook.failed',
+      requestId: record.requestId,
+      hook: record,
+    });
+  }
+
+  private async applyPromptHooks(
+    request: StartChatRequest,
+    systemPrompt: string,
+    effectiveWorkingDirectory: string,
+    emitEvent: EmitEvent,
+  ): Promise<{ systemPrompt: string; message: string }> {
+    return this.hookService.applyPromptHooks(
+      createPromptHookInput({
+        requestId: request.requestId,
+        config: request.config,
+        workingDirectory: effectiveWorkingDirectory,
+        systemPrompt,
+        message: request.message,
+      }),
+      (record) => this.emitHookRecord(record, emitEvent),
+    );
+  }
+
+  private async applyPostRunHooks(
+    request: StartChatRequest,
+    status: 'completed' | 'failed' | 'cancelled',
+    content: string | undefined,
+    errorMessage: string | undefined,
+    emitEvent: EmitEvent,
+  ): Promise<void> {
+    await this.hookService.applyRunAfterHooks(
+      {
+        requestId: request.requestId,
+        source: request.requestId.startsWith('automation:') ? 'automation' : 'chat',
+        providerId: request.config.providerId,
+        model: request.config.model,
+        status,
+        content,
+        errorMessage,
+        toolCount: this.runHookState.get(request.requestId)?.toolCount ?? 0,
+      },
+      (record) => this.emitHookRecord(record, emitEvent),
+    );
+  }
+
   private createToolDefinitions(requestId: string, context: ToolContext, emitEvent: EmitEvent): GenericToolDefinition[] {
     let toolCounter = 0;
 
@@ -1036,7 +1127,19 @@ export class LlmService {
       args: TArgs,
       execute: (input: TArgs, toolContext: ToolContext) => Promise<string>,
     ): Promise<string> => {
-      const startedRecord = createToolRecord(name, args);
+      const hooked = await this.hookService.applyToolBeforeHooks(
+        {
+          requestId,
+          toolName: name,
+          args,
+          argumentsText: safeJson(args),
+          workingDirectory: context.workspaceRoot,
+        },
+        (record) => this.emitHookRecord(record, emitEvent),
+      );
+      const hookedArgs = hooked.args as TArgs;
+      this.incrementHookedToolCount(requestId);
+      const startedRecord = createToolRecord(name, hookedArgs);
       emitEvent({
         type: 'tool.started',
         requestId,
@@ -1044,7 +1147,19 @@ export class LlmService {
       });
 
       try {
-        const output = await execute(args, context);
+        const output = await execute(hookedArgs, context);
+        await this.hookService.applyToolAfterHooks(
+          {
+            requestId,
+            toolName: name,
+            args: hookedArgs,
+            argumentsText: safeJson(hookedArgs),
+            workingDirectory: context.workspaceRoot,
+            status: 'completed',
+            output,
+          },
+          (record) => this.emitHookRecord(record, emitEvent),
+        );
         emitEvent({
           type: 'tool.completed',
           requestId,
@@ -1058,6 +1173,18 @@ export class LlmService {
         return output;
       } catch (error) {
         const messageText = error instanceof Error ? error.message : 'Unknown tool error';
+        await this.hookService.applyToolAfterHooks(
+          {
+            requestId,
+            toolName: name,
+            args: hookedArgs,
+            argumentsText: safeJson(hookedArgs),
+            workingDirectory: context.workspaceRoot,
+            status: 'failed',
+            errorMessage: messageText,
+          },
+          (record) => this.emitHookRecord(record, emitEvent),
+        );
         emitEvent({
           type: 'tool.failed',
           requestId,

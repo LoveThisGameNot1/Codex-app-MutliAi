@@ -39,6 +39,8 @@ export type ArtifactViewMode = 'code' | 'preview';
 export type MessageRole = 'user' | 'assistant' | 'tool' | 'system';
 export type MessageStatus = 'idle' | 'streaming' | 'complete' | 'error';
 export type ToolExecutionStatus = 'running' | 'completed' | 'failed';
+export type HookExecutionStatus = 'completed' | 'failed';
+export type HookStage = 'prompt.beforeSend' | 'tool.beforeExecute' | 'tool.afterExecute' | 'run.afterComplete';
 export type ToolAccessMode = 'allow' | 'ask' | 'block';
 export type ToolApprovalScope = 'once' | 'request' | 'always' | 'unsafe-run';
 export type ToolApprovalDecision = 'approve' | 'reject';
@@ -108,6 +110,18 @@ export type ToolExecutionRecord = {
   status: ToolExecutionStatus;
   startedAt: string;
   finishedAt?: string;
+};
+
+export type HookExecutionRecord = {
+  id: string;
+  requestId: string;
+  hookId: string;
+  hookName: string;
+  stage: HookStage;
+  status: HookExecutionStatus;
+  detail: string;
+  startedAt: string;
+  finishedAt: string;
 };
 
 export type ToolApprovalRequestRecord = {
@@ -510,6 +524,16 @@ export type ChatStreamEvent =
       type: 'tool.failed';
       requestId: string;
       tool: ToolExecutionRecord;
+    }
+  | {
+      type: 'hook.completed';
+      requestId: string;
+      hook: HookExecutionRecord;
+    }
+  | {
+      type: 'hook.failed';
+      requestId: string;
+      hook: HookExecutionRecord;
     }
   | {
       type: 'approval.requested';

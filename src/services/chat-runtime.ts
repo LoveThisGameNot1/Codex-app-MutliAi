@@ -453,6 +453,17 @@ export class ChatRuntime {
         });
         return;
       }
+      case 'hook.completed':
+      case 'hook.failed': {
+        if (activeRun) {
+          state.addSystemMessage(
+            activeRun.taskId,
+            `Hook ${event.hook.hookName} (${event.hook.stage}) ${event.hook.status}.\n\n${event.hook.detail}`,
+            event.hook.status === 'failed' ? 'error' : 'complete',
+          );
+        }
+        return;
+      }
       default:
         break;
     }
