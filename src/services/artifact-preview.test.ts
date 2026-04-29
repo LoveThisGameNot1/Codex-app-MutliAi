@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ArtifactRecord } from '../../shared/contracts';
 import {
+  ARTIFACT_PREVIEW_COMMAND_SOURCE,
   ARTIFACT_PREVIEW_MESSAGE_SOURCE,
   buildArtifactPreviewDocument,
   isArtifactPreviewRuntimeEvent,
@@ -32,7 +33,9 @@ describe('artifact preview browser validation', () => {
     expect(document).toContain("base-uri 'none'");
     expect(document).toContain("form-action 'none'");
     expect(document).toContain(ARTIFACT_PREVIEW_MESSAGE_SOURCE);
+    expect(document).toContain(ARTIFACT_PREVIEW_COMMAND_SOURCE);
     expect(document).toContain('preview.ready');
+    expect(document).toContain('preview.command-result');
   });
 
   it('preserves full HTML documents while adding guardrails', () => {
@@ -113,5 +116,19 @@ describe('artifact preview browser validation', () => {
       }),
     ).toBe(true);
     expect(isArtifactPreviewRuntimeEvent({ source: 'other', type: 'preview.ready' })).toBe(false);
+  });
+
+  it('validates command-result messages from scripted preview interactions', () => {
+    expect(
+      isArtifactPreviewRuntimeEvent({
+        source: ARTIFACT_PREVIEW_MESSAGE_SOURCE,
+        type: 'preview.command-result',
+        emittedAt: '2026-04-29T00:00:00.000Z',
+        commandId: 'command-1',
+        action: 'extract-dom',
+        status: 'completed',
+        detail: 'DOM snapshot extracted.',
+      }),
+    ).toBe(true);
   });
 });

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   AppConfigUpdate,
+  CaptureArtifactPreviewInput,
   CreateAutomationInput,
   CancelChatRequest,
   CheckMcpConnectorInput,
@@ -22,6 +23,7 @@ import { GitService } from './git-service';
 import { LlmService } from './llm-service';
 import { McpConnectorService } from './mcp-connector-service';
 import { PluginService } from './plugin-service';
+import { PreviewCaptureService } from './preview-capture-service';
 import { SessionStore, toSessionSummary } from './session-store';
 import { TaskWorkspaceService } from './task-workspace-service';
 
@@ -37,6 +39,10 @@ const gitService = new GitService(workspaceRoot);
 const pluginService = new PluginService(workspaceRoot, app.getPath('userData'));
 const mcpConnectorService = new McpConnectorService(pluginService);
 const taskWorkspaceService = new TaskWorkspaceService(workspaceRoot, path.join(app.getPath('userData'), 'task-clones'));
+const previewCaptureService = new PreviewCaptureService(
+  path.join(app.getPath('userData'), 'artifact-preview-screenshots'),
+  () => mainWindow,
+);
 const emitChatEvent = (event: ChatStreamEvent): void => {
   mainWindow?.webContents.send('chat:event', event);
 };
@@ -130,6 +136,9 @@ const registerIpcHandlers = (): void => {
   ipcMain.handle('task-workspaces:create-safe-clone', (_event, input) => taskWorkspaceService.createSafeClone(input));
   ipcMain.handle('task-workspaces:discard-safe-clone', (_event, clonePath: string) =>
     taskWorkspaceService.discardSafeClone(clonePath),
+  );
+  ipcMain.handle('artifact-preview:capture', (_event, input: CaptureArtifactPreviewInput) =>
+    previewCaptureService.capture(input),
   );
 
   ipcMain.handle('chat:start', async (_event, request: StartChatRequest) => {

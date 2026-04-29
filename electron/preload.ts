@@ -6,6 +6,8 @@ import type {
   AutomationRecord,
   AutomationRunRecord,
   CancelChatRequest,
+  ArtifactPreviewScreenshotResult,
+  CaptureArtifactPreviewInput,
   CheckMcpConnectorInput,
   ChatStreamEvent,
   CreateSafeTaskCloneInput,
@@ -68,6 +70,8 @@ const desktopApi: DesktopApi = {
     ipcRenderer.invoke('task-workspaces:create-safe-clone', input),
   discardSafeTaskClone: (clonePath: string): Promise<void> =>
     ipcRenderer.invoke('task-workspaces:discard-safe-clone', clonePath),
+  captureArtifactPreview: (input: CaptureArtifactPreviewInput): Promise<ArtifactPreviewScreenshotResult> =>
+    ipcRenderer.invoke('artifact-preview:capture', input),
   startChat: (request: StartChatRequest): Promise<void> => ipcRenderer.invoke('chat:start', request),
   cancelChat: (request: CancelChatRequest): Promise<void> => ipcRenderer.invoke('chat:cancel', request),
   resetChat: (request: ResetChatRequest): Promise<void> => ipcRenderer.invoke('chat:reset', request),

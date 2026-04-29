@@ -365,6 +365,19 @@ export type ArtifactRecord = {
   sourceMessageId: string;
 };
 
+export type CaptureArtifactPreviewInput = {
+  artifactId: string;
+  title: string;
+};
+
+export type ArtifactPreviewScreenshotResult = {
+  path: string;
+  width: number;
+  height: number;
+  bytes: number;
+  capturedAt: string;
+};
+
 export type StartChatRequest = {
   requestId: string;
   sessionId: string;
@@ -599,6 +612,7 @@ export type DesktopApi = {
   reviewGitChanges: () => Promise<GitCodeReviewResult>;
   createSafeTaskClone: (input: CreateSafeTaskCloneInput) => Promise<TaskCloneResult>;
   discardSafeTaskClone: (clonePath: string) => Promise<void>;
+  captureArtifactPreview: (input: CaptureArtifactPreviewInput) => Promise<ArtifactPreviewScreenshotResult>;
   startChat: (request: StartChatRequest) => Promise<void>;
   cancelChat: (request: CancelChatRequest) => Promise<void>;
   resetChat: (request: ResetChatRequest) => Promise<void>;

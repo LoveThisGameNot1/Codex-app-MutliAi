@@ -6,6 +6,8 @@ import type {
   AutomationRecord,
   AutomationRunRecord,
   CancelChatRequest,
+  ArtifactPreviewScreenshotResult,
+  CaptureArtifactPreviewInput,
   CheckMcpConnectorInput,
   ChatStreamEvent,
   CreateSafeTaskCloneInput,
@@ -88,6 +90,9 @@ export const createSafeTaskClone = (input: CreateSafeTaskCloneInput): Promise<Ta
   requireDesktopApi().createSafeTaskClone(input);
 export const discardSafeTaskClone = (clonePath: string): Promise<void> =>
   requireDesktopApi().discardSafeTaskClone(clonePath);
+export const captureArtifactPreview = (
+  input: CaptureArtifactPreviewInput,
+): Promise<ArtifactPreviewScreenshotResult> => requireDesktopApi().captureArtifactPreview(input);
 export const startChat = (request: StartChatRequest): Promise<void> => requireDesktopApi().startChat(request);
 export const cancelChat = (request: CancelChatRequest): Promise<void> => requireDesktopApi().cancelChat(request);
 export const resetChat = (request: ResetChatRequest): Promise<void> => requireDesktopApi().resetChat(request);

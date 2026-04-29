@@ -4,6 +4,7 @@ import type { ArtifactRecord } from '../../shared/contracts';
 const previewCsp =
   "default-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'; img-src data: https: http:; media-src data: https: http:; font-src data: https: http:; connect-src https: http:; style-src 'unsafe-inline' https: http:; script-src 'unsafe-inline' 'unsafe-eval' https: http:; frame-src https: http:;";
 export const ARTIFACT_PREVIEW_MESSAGE_SOURCE = 'codexapp-artifact-preview';
+export const ARTIFACT_PREVIEW_COMMAND_SOURCE = 'codexapp-artifact-preview-command';
 const MAX_SNAPSHOT_TEXT_LENGTH = 5_000;
 
 export type ArtifactPreviewIssueSeverity = 'info' | 'warning' | 'blocked';
@@ -42,6 +43,18 @@ export type ArtifactPreviewSnapshot = {
   };
 };
 
+export type ArtifactPreviewCommandAction = 'extract-dom' | 'click' | 'type' | 'navigate';
+
+export type ArtifactPreviewCommand = {
+  source: typeof ARTIFACT_PREVIEW_COMMAND_SOURCE;
+  type: 'preview.command';
+  commandId: string;
+  action: ArtifactPreviewCommandAction;
+  selector?: string;
+  value?: string;
+  href?: string;
+};
+
 export type ArtifactPreviewRuntimeEvent =
   | {
       source: typeof ARTIFACT_PREVIEW_MESSAGE_SOURCE;
@@ -69,6 +82,16 @@ export type ArtifactPreviewRuntimeEvent =
       emittedAt: string;
       action: string;
       method: string;
+    }
+  | {
+      source: typeof ARTIFACT_PREVIEW_MESSAGE_SOURCE;
+      type: 'preview.command-result';
+      emittedAt: string;
+      commandId: string;
+      action: ArtifactPreviewCommandAction;
+      status: 'completed' | 'failed' | 'blocked';
+      detail: string;
+      snapshot?: ArtifactPreviewSnapshot;
     };
 
 const previewStyle = `
@@ -114,6 +137,7 @@ const previewCspMeta = (): string =>
 const previewInstrumentationScript = (): string => `<script>
 (() => {
   const SOURCE = ${JSON.stringify(ARTIFACT_PREVIEW_MESSAGE_SOURCE)};
+  const COMMAND_SOURCE = ${JSON.stringify(ARTIFACT_PREVIEW_COMMAND_SOURCE)};
   const MAX_TEXT = ${MAX_SNAPSHOT_TEXT_LENGTH};
   const post = (payload) => {
     try {
@@ -121,6 +145,16 @@ const previewInstrumentationScript = (): string => `<script>
     } catch {
       // Preview telemetry must never break the rendered artifact.
     }
+  };
+  const postCommandResult = (command, status, detail, extra = {}) => {
+    post({
+      type: 'preview.command-result',
+      commandId: command.commandId,
+      action: command.action,
+      status,
+      detail,
+      ...extra
+    });
   };
   const count = (selector) => document.querySelectorAll(selector).length;
   const clippedTexts = (selector) =>
@@ -150,6 +184,78 @@ const previewInstrumentationScript = (): string => `<script>
     };
   };
   const emitReady = () => post({ type: 'preview.ready', snapshot: snapshot() });
+  const findCommandTarget = (selector) => {
+    if (!selector || typeof selector !== 'string') {
+      return null;
+    }
+    try {
+      return document.querySelector(selector);
+    } catch {
+      return null;
+    }
+  };
+  const executeCommand = (command) => {
+    if (command.action === 'extract-dom') {
+      postCommandResult(command, 'completed', 'DOM snapshot extracted.', { snapshot: snapshot() });
+      emitReady();
+      return;
+    }
+
+    if (command.action === 'click') {
+      const target = findCommandTarget(command.selector);
+      if (!target) {
+        postCommandResult(command, 'failed', \`No element matched selector "\${command.selector || ''}".\`);
+        return;
+      }
+      target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+      postCommandResult(command, 'completed', \`Clicked selector "\${command.selector}".\`, { snapshot: snapshot() });
+      emitReady();
+      return;
+    }
+
+    if (command.action === 'type') {
+      const target = findCommandTarget(command.selector);
+      if (!target) {
+        postCommandResult(command, 'failed', \`No editable element matched selector "\${command.selector || ''}".\`);
+        return;
+      }
+      const value = String(command.value || '');
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+        target.value = value;
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+        target.dispatchEvent(new Event('change', { bubbles: true }));
+      } else if (target instanceof HTMLElement && target.isContentEditable) {
+        target.textContent = value;
+        target.dispatchEvent(new InputEvent('input', { bubbles: true, data: value }));
+      } else {
+        postCommandResult(command, 'failed', \`Selector "\${command.selector}" is not editable.\`);
+        return;
+      }
+      postCommandResult(command, 'completed', \`Typed into selector "\${command.selector}".\`, { snapshot: snapshot() });
+      emitReady();
+      return;
+    }
+
+    if (command.action === 'navigate') {
+      const href = String(command.href || '');
+      if (!href || href.startsWith('#')) {
+        window.location.hash = href || '#preview-command';
+        postCommandResult(command, 'completed', \`Navigated inside preview to "\${window.location.hash}".\`, { snapshot: snapshot() });
+        emitReady();
+        return;
+      }
+
+      post({
+        type: 'preview.navigation-blocked',
+        href,
+        label: 'Scripted navigation command'
+      });
+      postCommandResult(command, 'blocked', \`Blocked scripted navigation to "\${href}".\`);
+      return;
+    }
+
+    postCommandResult(command, 'failed', \`Unknown preview command "\${command.action}".\`);
+  };
   window.addEventListener('error', (event) => {
     post({
       type: 'preview.error',
@@ -164,6 +270,21 @@ const previewInstrumentationScript = (): string => `<script>
       message: reason instanceof Error ? reason.message : String(reason || 'Unhandled preview promise rejection.'),
       stack: reason instanceof Error ? reason.stack : undefined
     });
+  });
+  window.addEventListener('message', (event) => {
+    const data = event.data || {};
+    if (data.source !== COMMAND_SOURCE || data.type !== 'preview.command' || typeof data.commandId !== 'string') {
+      return;
+    }
+    try {
+      executeCommand(data);
+    } catch (error) {
+      postCommandResult(
+        data,
+        'failed',
+        error instanceof Error ? error.message : String(error || 'Preview command failed.')
+      );
+    }
   });
   document.addEventListener('click', (event) => {
     const target = event.target instanceof Element ? event.target : null;
@@ -506,7 +627,8 @@ export const isArtifactPreviewRuntimeEvent = (value: unknown): value is Artifact
     (event.type === 'preview.ready' ||
       event.type === 'preview.error' ||
       event.type === 'preview.navigation-blocked' ||
-      event.type === 'preview.form-blocked') &&
+      event.type === 'preview.form-blocked' ||
+      event.type === 'preview.command-result') &&
     typeof event.emittedAt === 'string'
   );
 };

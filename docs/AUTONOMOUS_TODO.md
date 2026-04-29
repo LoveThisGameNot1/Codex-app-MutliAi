@@ -88,10 +88,10 @@ Why this matters:
 ## Priority 7: Browser And UI Interaction Capabilities
 
 - [x] Add a browser automation or embedded browser execution layer.
-- [ ] Support basic page navigation, screenshots, DOM extraction, and scripted interactions.
+- [x] Support basic page navigation, screenshots, DOM extraction, and scripted interactions.
 - [x] Allow artifact previews to be validated automatically in-browser.
 - [x] Add guardrails for unsafe browsing or external actions.
-- [ ] Add tests for preview validation and screenshot capture.
+- [x] Add tests for preview validation and screenshot capture.
 
 Why this matters:
 - Browser and computer-use style workflows are still missing.
