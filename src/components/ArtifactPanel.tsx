@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react';
-import { buildArtifactPreviewDocument, canPreviewArtifact } from '@/services/artifact-preview';
+import { canPreviewArtifact } from '@/services/artifact-preview';
+import { ArtifactPreviewFrame } from '@/components/ArtifactPreviewFrame';
 import { useAppStore } from '@/store/app-store';
 import { cn } from '@/utils/cn';
 
@@ -111,12 +112,7 @@ export const ArtifactPanel = () => {
             </div>
           </div>
         ) : artifactView === 'preview' && previewEnabled ? (
-          <iframe
-            title={activeArtifact.title}
-            sandbox="allow-scripts"
-            srcDoc={buildArtifactPreviewDocument(activeArtifact)}
-            className="h-full min-h-[540px] w-full border-0 bg-white"
-          />
+          <ArtifactPreviewFrame artifact={activeArtifact} />
         ) : (
           <Suspense
             fallback={
