@@ -1,4 +1,8 @@
 import type { WorkspaceSection } from '@/store/app-store';
+import {
+  expandWorkflowTemplate,
+  type WorkflowTemplateId,
+} from '../../shared/workflow-templates';
 
 export type SlashCommandCategory = 'session' | 'navigation' | 'workspace' | 'agent-workflow';
 export type SlashCommandKind = 'local' | 'prompt-template';
@@ -16,6 +20,8 @@ export type SlashCommandId =
   | 'live-workspace'
   | 'code-review'
   | 'fix-tests'
+  | 'dependency-audit'
+  | 'release-prep'
   | 'release-notes'
   | 'ui';
 
@@ -28,6 +34,7 @@ export type SlashCommandDefinition = {
   category: SlashCommandCategory;
   kind: SlashCommandKind;
   targetSection?: WorkspaceSection;
+  workflowTemplateId?: WorkflowTemplateId;
 };
 
 export type SlashCommandInvocation =
@@ -159,6 +166,7 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     usage: '/code-review Optional scope',
     category: 'agent-workflow',
     kind: 'prompt-template',
+    workflowTemplateId: 'code-review',
   },
   {
     id: 'fix-tests',
@@ -168,15 +176,37 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     usage: '/fix-tests Optional test command or failure summary',
     category: 'agent-workflow',
     kind: 'prompt-template',
+    workflowTemplateId: 'test-repair',
+  },
+  {
+    id: 'dependency-audit',
+    aliases: ['deps', 'audit', 'dependency-check'],
+    title: 'Run dependency audit',
+    summary: 'Expands into a dependency health, lockfile, package audit, and validation workflow.',
+    usage: '/dependency-audit Optional package manager or scope',
+    category: 'agent-workflow',
+    kind: 'prompt-template',
+    workflowTemplateId: 'dependency-audit',
+  },
+  {
+    id: 'release-prep',
+    aliases: ['release'],
+    title: 'Prepare release',
+    summary: 'Expands into a release preparation workflow with notes, risks, and validation status.',
+    usage: '/release-prep Optional version or scope',
+    category: 'agent-workflow',
+    kind: 'prompt-template',
+    workflowTemplateId: 'release-prep',
   },
   {
     id: 'release-notes',
-    aliases: ['release', 'changelog'],
+    aliases: ['changelog'],
     title: 'Draft release notes',
     summary: 'Expands into a Git-aware release-note preparation workflow.',
     usage: '/release-notes Optional version or scope',
     category: 'agent-workflow',
     kind: 'prompt-template',
+    workflowTemplateId: 'release-prep',
   },
   {
     id: 'ui',
@@ -186,6 +216,7 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     usage: '/ui Describe the interface or screen',
     category: 'agent-workflow',
     kind: 'prompt-template',
+    workflowTemplateId: 'ui-generation',
   },
 ];
 
@@ -269,44 +300,7 @@ export const getSlashCommandSuggestions = (input: string, limit = 8): SlashComma
 };
 
 export const createSlashCommandPrompt = (command: SlashCommandDefinition, args: string): string => {
-  const scope = args.trim() || 'the current workspace';
-
-  switch (command.id) {
-    case 'code-review':
-      return [
-        `Run a rigorous code review for ${scope}.`,
-        '',
-        'Focus first on concrete findings ordered by severity.',
-        'Check for behavioral regressions, missing tests, unsafe filesystem or terminal behavior, packaging risk, and UX regressions.',
-        'Use git/file inspection tools as needed. If you find issues, explain exact file and line references and propose fixes.',
-        'If there are no findings, say that explicitly and list any residual test or coverage gaps.',
-      ].join('\n');
-    case 'fix-tests':
-      return [
-        `Diagnose and fix the failing tests for ${scope}.`,
-        '',
-        'Run the relevant test command first when it is safe.',
-        'Identify the root cause before editing files.',
-        'Make the smallest durable code change, then rerun the affected tests and the broader validation that fits the change.',
-      ].join('\n');
-    case 'release-notes':
-      return [
-        `Prepare release notes for ${scope}.`,
-        '',
-        'Inspect recent git changes and summarize user-facing changes, fixes, internal improvements, and known risks.',
-        'Keep the notes concise, factual, and ready to paste into a GitHub release or changelog.',
-      ].join('\n');
-    case 'ui':
-      return [
-        `Design and implement this UI request: ${scope}.`,
-        '',
-        'Prefer a polished, intentional visual direction instead of generic defaults.',
-        'Use the existing app structure and style language unless the request clearly asks for a new direction.',
-        'When useful, produce an interactive artifact preview and write production-ready typed code.',
-      ].join('\n');
-    default:
-      return args.trim();
-  }
+  return command.workflowTemplateId ? expandWorkflowTemplate(command.workflowTemplateId, args) : args.trim();
 };
 
 export const formatSlashCommandHelp = (): string => {

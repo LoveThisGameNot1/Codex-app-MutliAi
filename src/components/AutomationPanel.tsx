@@ -3,6 +3,11 @@ import type { AutomationRecord, AutomationWeekday } from '../../shared/contracts
 import { summarizeAutomationToolPolicy } from '../../shared/tool-policy';
 import { automationRuntime } from '@/services/automation-runtime';
 import {
+  WORKFLOW_TEMPLATES,
+  expandWorkflowTemplate,
+  type WorkflowTemplateId,
+} from '../../shared/workflow-templates';
+import {
   buildAutomationSchedule,
   defaultScheduleFormState,
   formatAutomationSchedule,
@@ -24,6 +29,8 @@ const copyFormState = (state: ScheduleFormState): ScheduleFormState => ({
   weeklyMinute: state.weeklyMinute,
   weeklyDays: [...state.weeklyDays],
 });
+
+type WorkflowTemplateSelection = WorkflowTemplateId | '';
 
 const ScheduleFields = ({
   state,
@@ -156,16 +163,94 @@ const ScheduleFields = ({
   );
 };
 
+const WorkflowTemplatePicker = ({
+  selectedTemplateId,
+  scope,
+  onSelectedTemplateIdChange,
+  onScopeChange,
+  onApply,
+}: {
+  selectedTemplateId: WorkflowTemplateSelection;
+  scope: string;
+  onSelectedTemplateIdChange: (templateId: WorkflowTemplateSelection) => void;
+  onScopeChange: (scope: string) => void;
+  onApply: () => void;
+}) => {
+  const selectedTemplate = WORKFLOW_TEMPLATES.find((template) => template.id === selectedTemplateId) ?? null;
+
+  return (
+    <div className="rounded-2xl border border-sky-300/15 bg-sky-300/5 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-100">Workflow Template</p>
+          <p className="mt-2 text-sm text-slate-400">
+            Use a reusable agent workflow for recurring tasks such as code review, release prep, dependency audits, or UI work.
+          </p>
+        </div>
+        <span className="rounded-full border border-sky-300/20 bg-sky-300/10 px-2.5 py-1 text-[11px] text-sky-100">
+          Optional
+        </span>
+      </div>
+
+      <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+        <label className="flex flex-col gap-2 text-sm text-slate-300">
+          Template
+          <select
+            value={selectedTemplateId}
+            onChange={(event) => onSelectedTemplateIdChange(event.target.value as WorkflowTemplateSelection)}
+            className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-slate-100 outline-none transition focus:border-sky-400/40"
+          >
+            <option value="">No template</option>
+            {WORKFLOW_TEMPLATES.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.title}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-2 text-sm text-slate-300">
+          Scope
+          <input
+            type="text"
+            value={scope}
+            onChange={(event) => onScopeChange(event.target.value)}
+            placeholder={selectedTemplate?.defaultScope ?? 'Optional workflow scope'}
+            className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-slate-100 outline-none transition focus:border-sky-400/40"
+          />
+        </label>
+
+        <button
+          type="button"
+          disabled={!selectedTemplateId}
+          onClick={onApply}
+          className="self-end rounded-full border border-sky-400/30 bg-sky-400/10 px-5 py-3 text-sm font-medium text-sky-100 transition hover:bg-sky-400/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
+        >
+          Apply
+        </button>
+      </div>
+
+      {selectedTemplate ? (
+        <p className="mt-3 text-xs leading-6 text-slate-500">{selectedTemplate.automationSummary}</p>
+      ) : null}
+    </div>
+  );
+};
+
 export const AutomationPanel = () => {
   const config = useAppStore((state) => state.config);
   const automations = useAppStore((state) => state.automations);
   const automationRuns = useAppStore((state) => state.automationRuns);
   const [name, setName] = useState('');
   const [prompt, setPrompt] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<WorkflowTemplateSelection>('');
+  const [templateScope, setTemplateScope] = useState('');
   const [createSchedule, setCreateSchedule] = useState<ScheduleFormState>(defaultScheduleFormState());
   const [editingAutomationId, setEditingAutomationId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editPrompt, setEditPrompt] = useState('');
+  const [editSelectedTemplateId, setEditSelectedTemplateId] = useState<WorkflowTemplateSelection>('');
+  const [editTemplateScope, setEditTemplateScope] = useState('');
   const [editSchedule, setEditSchedule] = useState<ScheduleFormState>(defaultScheduleFormState());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -179,13 +264,33 @@ export const AutomationPanel = () => {
   const resetCreateForm = (): void => {
     setName('');
     setPrompt('');
+    setSelectedTemplateId('');
+    setTemplateScope('');
     setCreateSchedule(defaultScheduleFormState());
+  };
+
+  const applyCreateWorkflowTemplate = (): void => {
+    if (!selectedTemplateId) {
+      return;
+    }
+
+    setPrompt(expandWorkflowTemplate(selectedTemplateId, templateScope));
+  };
+
+  const applyEditWorkflowTemplate = (): void => {
+    if (!editSelectedTemplateId) {
+      return;
+    }
+
+    setEditPrompt(expandWorkflowTemplate(editSelectedTemplateId, editTemplateScope));
   };
 
   const beginEditing = (automation: AutomationRecord): void => {
     setEditingAutomationId(automation.id);
     setEditName(automation.name);
     setEditPrompt(automation.prompt);
+    setEditSelectedTemplateId('');
+    setEditTemplateScope('');
     setEditSchedule(copyFormState(scheduleToFormState(automation.schedule)));
     setEditError(null);
   };
@@ -194,6 +299,8 @@ export const AutomationPanel = () => {
     setEditingAutomationId(null);
     setEditName('');
     setEditPrompt('');
+    setEditSelectedTemplateId('');
+    setEditTemplateScope('');
     setEditSchedule(defaultScheduleFormState());
     setEditError(null);
   };
@@ -341,6 +448,13 @@ export const AutomationPanel = () => {
                 className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-slate-100 outline-none transition focus:border-sky-400/40"
               />
             </label>
+            <WorkflowTemplatePicker
+              selectedTemplateId={selectedTemplateId}
+              scope={templateScope}
+              onSelectedTemplateIdChange={setSelectedTemplateId}
+              onScopeChange={setTemplateScope}
+              onApply={applyCreateWorkflowTemplate}
+            />
             <label className="flex flex-col gap-2 text-sm text-slate-300">
               Prompt
               <textarea
@@ -444,6 +558,13 @@ export const AutomationPanel = () => {
                         className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-slate-100 outline-none transition focus:border-sky-400/40"
                       />
                     </label>
+                    <WorkflowTemplatePicker
+                      selectedTemplateId={editSelectedTemplateId}
+                      scope={editTemplateScope}
+                      onSelectedTemplateIdChange={setEditSelectedTemplateId}
+                      onScopeChange={setEditTemplateScope}
+                      onApply={applyEditWorkflowTemplate}
+                    />
                     <label className="flex flex-col gap-2 text-sm text-slate-300">
                       Prompt
                       <textarea

@@ -177,6 +177,59 @@ describe('AutomationService', () => {
     });
   });
 
+  it('expands workflow slash commands before running automations', async () => {
+    const baseDir = await createTempDir();
+    const automationStore = new AutomationStore(baseDir);
+    const sessionStore = new SessionStore(baseDir);
+    let receivedMessage = '';
+
+    const llmServiceStub = {
+      startChat: async ({ sessionId, message }: { sessionId: string; message: string }) => {
+        receivedMessage = message;
+        await sessionStore.upsert({
+          id: sessionId,
+          prompt: 'automation prompt',
+          updatedAt: new Date().toISOString(),
+          messages: [
+            { role: 'developer', content: 'automation prompt' },
+            { role: 'user', content: message },
+            { role: 'assistant', content: 'Workflow automation done.' },
+          ],
+        });
+      },
+    } as never;
+
+    const service = new AutomationService(
+      automationStore,
+      sessionStore,
+      llmServiceStub,
+      async () => ({
+        providerId: DEFAULT_PROVIDER_ID,
+        baseUrl: DEFAULT_BASE_URL,
+        apiKey: 'test-key',
+        model: 'gpt-5.4',
+        systemPrompt: 'system',
+        toolPolicy: DEFAULT_TOOL_POLICY,
+      }),
+      () => undefined,
+      () => undefined,
+    );
+
+    const automation = await service.createAutomation({
+      name: 'Weekly dependency audit',
+      prompt: '/dependency-audit weekly package risk sweep',
+      schedule: {
+        kind: 'interval',
+        intervalMinutes: 30,
+      },
+    });
+
+    await service.runAutomationNow(automation.id);
+
+    expect(receivedMessage).toContain('Run a dependency audit for weekly package risk sweep.');
+    expect(receivedMessage).toContain('Inspect package manifests and lockfiles before changing anything.');
+  });
+
   it('preserves ask-first permissions for in-workspace automation tools so runs can pause for approval', async () => {
     const baseDir = await createTempDir();
     const automationStore = new AutomationStore(baseDir);

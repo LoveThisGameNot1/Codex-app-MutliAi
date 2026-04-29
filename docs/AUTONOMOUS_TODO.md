@@ -78,8 +78,8 @@ Why this matters:
 - [x] Add slash-command support for frequent workflows.
 - [x] Add a planning tool for breaking larger goals into structured execution steps.
 - [x] Add prompt hooks / tool hooks / post-run hooks.
-- [ ] Add reusable workflow templates for tasks like code review, release prep, dependency audits, and UI generation.
-- [ ] Allow automations to invoke these workflows directly.
+- [x] Add reusable workflow templates for tasks like code review, release prep, dependency audits, and UI generation.
+- [x] Allow automations to invoke these workflows directly.
 - [x] Add tests for hook ordering and failure handling.
 
 Why this matters:

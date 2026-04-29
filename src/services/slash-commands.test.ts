@@ -56,6 +56,18 @@ describe('slash command registry', () => {
     );
   });
 
+  it('expands dependency audit workflow commands', () => {
+    const invocation = parseSlashCommand('/dependency-audit package-lock drift');
+    if (!invocation?.matched) {
+      throw new Error('Expected matched command.');
+    }
+
+    expect(invocation.command.workflowTemplateId).toBe('dependency-audit');
+    expect(createSlashCommandPrompt(invocation.command, invocation.args)).toContain(
+      'Run a dependency audit for package-lock drift.',
+    );
+  });
+
   it('formats help with all major command groups', () => {
     const help = formatSlashCommandHelp();
 
@@ -65,5 +77,6 @@ describe('slash command registry', () => {
     expect(help).toContain('**Agent workflows**');
     expect(help).toContain('`/plan Optional goal`');
     expect(help).toContain('`/code-review Optional scope`');
+    expect(help).toContain('`/dependency-audit Optional package manager or scope`');
   });
 });

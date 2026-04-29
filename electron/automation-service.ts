@@ -11,6 +11,7 @@ import type {
   UpdateAutomationInput,
 } from '../shared/contracts';
 import { deriveAutomationToolPolicy } from '../shared/tool-policy';
+import { expandWorkflowCommand } from '../shared/workflow-templates';
 import { AutomationStore } from './automation-store';
 import { LlmService } from './llm-service';
 import { SessionStore } from './session-store';
@@ -171,6 +172,10 @@ const validateSchedule = (schedule: AutomationSchedule): AutomationSchedule => {
 };
 
 const isApprovalWaitingSummary = (summary: string): boolean => summary.trim().toLowerCase().startsWith('waiting for approval');
+const expandAutomationWorkflowPrompt = (prompt: string): string => {
+  const expansion = expandWorkflowCommand(prompt);
+  return expansion?.matched ? expansion.prompt : prompt;
+};
 
 type EmitAutomationEvent = (event: AutomationEvent) => void;
 type EmitChatEvent = (event: ChatStreamEvent) => void;
@@ -334,6 +339,7 @@ export class AutomationService {
       };
       const requestId = `automation:${automation.id}:${runId}`;
       const sessionId = `automation:${automation.id}`;
+      const automationPrompt = expandAutomationWorkflowPrompt(automation.prompt);
       const updateRunningState = async (summary: string): Promise<void> => {
         const timestamp = nowIso();
         await this.automationStore.upsertRun({
@@ -355,7 +361,7 @@ export class AutomationService {
         {
           requestId,
           sessionId,
-          message: automation.prompt,
+          message: automationPrompt,
           config: automationConfig,
         },
         (event: ChatStreamEvent) => {
