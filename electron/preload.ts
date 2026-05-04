@@ -10,6 +10,7 @@ import type {
   CaptureArtifactPreviewInput,
   CheckMcpConnectorInput,
   ChatStreamEvent,
+  CreateProjectMemoryInput,
   CreateSafeTaskCloneInput,
   CreateAutomationInput,
   DesktopApi,
@@ -28,12 +29,17 @@ import type {
   PersistedSessionPayload,
   PersistedSessionSummary,
   PluginRecord,
+  ProjectMemoryRecord,
+  ProjectMemorySnapshot,
   ResetChatRequest,
   ResolveToolApprovalInput,
   StartChatRequest,
   TaskCloneResult,
   UpdateAutomationInput,
+  UpdateProjectMemoryInput,
+  UpdateWorkspaceInstructionsInput,
   UpdatePluginStateInput,
+  WorkspaceInstructionsRecord,
 } from '../shared/contracts';
 
 const desktopApi: DesktopApi = {
@@ -41,6 +47,14 @@ const desktopApi: DesktopApi = {
   getConfig: (): Promise<AppConfig> => ipcRenderer.invoke('config:get'),
   updateConfig: (update: AppConfigUpdate): Promise<AppConfig> => ipcRenderer.invoke('config:update', update),
   listAvailableModels: (config: AppConfig) => ipcRenderer.invoke('models:list', config),
+  getProjectMemorySnapshot: (): Promise<ProjectMemorySnapshot> => ipcRenderer.invoke('project-memory:get-snapshot'),
+  createProjectMemory: (input: CreateProjectMemoryInput): Promise<ProjectMemoryRecord> =>
+    ipcRenderer.invoke('project-memory:create', input),
+  updateProjectMemory: (input: UpdateProjectMemoryInput): Promise<ProjectMemoryRecord> =>
+    ipcRenderer.invoke('project-memory:update', input),
+  deleteProjectMemory: (memoryId: string): Promise<void> => ipcRenderer.invoke('project-memory:delete', memoryId),
+  updateWorkspaceInstructions: (input: UpdateWorkspaceInstructionsInput): Promise<WorkspaceInstructionsRecord> =>
+    ipcRenderer.invoke('workspace-instructions:update', input),
   getGitReview: (): Promise<GitReviewSnapshot> => ipcRenderer.invoke('git:review'),
   getGitDiff: (request: GitDiffRequest): Promise<GitDiffResult> => ipcRenderer.invoke('git:diff', request),
   draftGitCommit: (): Promise<GitCommitDraft> => ipcRenderer.invoke('git:draft-commit'),

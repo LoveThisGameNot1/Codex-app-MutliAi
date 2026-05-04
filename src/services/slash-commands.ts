@@ -15,6 +15,7 @@ export type SlashCommandId =
   | 'plugins'
   | 'plan'
   | 'automations'
+  | 'memory'
   | 'settings'
   | 'safe-clone'
   | 'live-workspace'
@@ -129,6 +130,16 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     category: 'navigation',
     kind: 'local',
     targetSection: 'automations',
+  },
+  {
+    id: 'memory',
+    aliases: ['instructions', 'remember'],
+    title: 'Open memory',
+    summary: 'Switches to project memory and reusable workspace instructions.',
+    usage: '/memory',
+    category: 'navigation',
+    kind: 'local',
+    targetSection: 'memory',
   },
   {
     id: 'settings',

@@ -4,6 +4,7 @@ import { AutomationInbox } from '@/components/AutomationInbox';
 import { AutomationPanel } from '@/components/AutomationPanel';
 import { ChatComposer } from '@/components/ChatComposer';
 import { MarkdownMessage } from '@/components/MarkdownMessage';
+import { MemoryPanel } from '@/components/MemoryPanel';
 import { PlannerPanel } from '@/components/PlannerPanel';
 import { PluginsPanel } from '@/components/PluginsPanel';
 import { ReviewPanel } from '@/components/ReviewPanel';
@@ -64,6 +65,12 @@ const sectionMeta = {
     title: 'Manage scheduled work',
     description:
       'Create, edit, inspect, and supervise recurring tasks without burying them inside the chat stream.',
+  },
+  memory: {
+    kicker: 'Project Memory',
+    title: 'Durable workspace knowledge',
+    description:
+      'Manage reusable instructions and persistent project facts that future model runs receive outside chat history.',
   },
   settings: {
     kicker: 'Runtime Settings',
@@ -206,6 +213,8 @@ export const ChatPanel = () => {
             <AutomationPanel />
           </>
         );
+      case 'memory':
+        return <MemoryPanel />;
       case 'settings':
         return <SettingsPanel embedded />;
       case 'chat':

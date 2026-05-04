@@ -15,12 +15,15 @@ import type {
   MessageRole,
   PersistedSessionSummary,
   PluginRecord,
+  ProjectMemoryRecord,
+  ProjectMemorySnapshot,
   TaskIsolationMode,
   TaskCloneResult,
   ToolApprovalDecision,
   ToolApprovalRequestRecord,
   ToolApprovalScope,
   ToolExecutionRecord,
+  WorkspaceInstructionsRecord,
 } from '../../shared/contracts';
 import { DEFAULT_BASE_URL, DEFAULT_MODEL, DEFAULT_PROVIDER_ID, DEFAULT_SYSTEM_PROMPT } from '../../shared/contracts';
 import { DEFAULT_TOOL_POLICY, normalizeToolPolicy } from '../../shared/tool-policy';
@@ -48,7 +51,7 @@ const createId = (): string =>
 const createSessionId = (): string => createId();
 const MAX_ACKNOWLEDGED_AUTOMATION_RUN_IDS = 200;
 
-export type WorkspaceSection = 'chat' | 'search' | 'review' | 'plugins' | 'planner' | 'automations' | 'settings';
+export type WorkspaceSection = 'chat' | 'search' | 'review' | 'plugins' | 'planner' | 'automations' | 'memory' | 'settings';
 
 const createDefaultTask = (workspaceSessionId: string): WorkspaceTask =>
   createWorkspaceTask({
@@ -74,6 +77,8 @@ export type AppState = {
   automationRuns: AutomationRunRecord[];
   plugins: PluginRecord[];
   mcpConnectors: McpConnectorRecord[];
+  projectMemory: ProjectMemoryRecord[];
+  workspaceInstructions: WorkspaceInstructionsRecord | null;
   plans: PlanRecord[];
   activePlanId: string | null;
   planGoalDraft: string;
@@ -110,6 +115,7 @@ export type AppState = {
   setAutomationRuns: (runs: AutomationRunRecord[]) => void;
   setPlugins: (plugins: PluginRecord[]) => void;
   setMcpConnectors: (connectors: McpConnectorRecord[]) => void;
+  hydrateProjectMemory: (snapshot: ProjectMemorySnapshot) => void;
   setPlanGoalDraft: (goal: string) => void;
   createPlan: (goal: string) => string | null;
   setActivePlanId: (planId: string | null) => void;
@@ -236,6 +242,8 @@ export const useAppStore = create<AppState>()(
         automationRuns: [],
         plugins: [],
         mcpConnectors: [],
+        projectMemory: [],
+        workspaceInstructions: null,
         plans: [],
         activePlanId: null,
         planGoalDraft: '',
@@ -341,6 +349,11 @@ export const useAppStore = create<AppState>()(
         }),
       setPlugins: (plugins) => set({ plugins }),
       setMcpConnectors: (mcpConnectors) => set({ mcpConnectors }),
+      hydrateProjectMemory: (snapshot) =>
+        set({
+          projectMemory: snapshot.memories,
+          workspaceInstructions: snapshot.instructions,
+        }),
       setPlanGoalDraft: (planGoalDraft) => set({ planGoalDraft }),
       createPlan: (goal) => {
         const normalizedGoal = goal.trim();
@@ -779,6 +792,8 @@ export const useAppStore = create<AppState>()(
         automations: state.automations,
         automationRuns: state.automationRuns,
         plugins: state.plugins,
+        projectMemory: state.projectMemory,
+        workspaceInstructions: state.workspaceInstructions,
         plans: state.plans,
         activePlanId: state.activePlanId,
         planGoalDraft: state.planGoalDraft,

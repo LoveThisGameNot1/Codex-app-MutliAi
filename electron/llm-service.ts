@@ -24,6 +24,7 @@ import {
   DEFAULT_SYSTEM_PROMPT,
   HookExecutionRecord,
   ModelCatalogResult,
+  ProjectMemorySnapshot,
   ResolveToolApprovalInput,
   StartChatRequest,
   ToolApprovalRequestRecord,
@@ -89,6 +90,11 @@ type SpawnSubtaskArgs = {
 };
 
 const safeJson = (value: unknown): string => JSON.stringify(value, null, 2);
+const collapseWhitespace = (value: string): string => value.replace(/\s+/g, ' ').trim();
+const truncatePromptText = (value: string, maxLength: number): string => {
+  const trimmed = value.trim();
+  return trimmed.length <= maxLength ? trimmed : `${trimmed.slice(0, maxLength - 3).trimEnd()}...`;
+};
 
 const parseJson = <T>(input: string): T => {
   try {
@@ -98,7 +104,41 @@ const parseJson = <T>(input: string): T => {
   }
 };
 
-const buildPrompt = (config: AppConfig, workingDirectory?: string | null): string => {
+const formatProjectMemoryPrompt = (context: ProjectMemorySnapshot | null | undefined): string => {
+  if (!context) {
+    return '';
+  }
+
+  const instructions = context.instructions.content.trim();
+  const memories = context.memories.slice(0, 12);
+  if (!instructions && memories.length === 0) {
+    return '';
+  }
+
+  return [
+    '',
+    'Project memory and workspace instructions:',
+    `Workspace root: ${context.workspaceRoot}`,
+    instructions ? `Reusable workspace instructions:\n${truncatePromptText(instructions, 4_000)}` : '',
+    memories.length > 0
+      ? [
+          'Project memory:',
+          ...memories.map((memory, index) => {
+            const tags = memory.tags.length > 0 ? ` [${memory.tags.join(', ')}]` : '';
+            return `${index + 1}. ${memory.title}${tags}: ${truncatePromptText(collapseWhitespace(memory.content), 900)}`;
+          }),
+        ].join('\n')
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+};
+
+const buildPrompt = (
+  config: AppConfig,
+  workingDirectory?: string | null,
+  projectContext?: ProjectMemorySnapshot | null,
+): string => {
   const trimmed = config.systemPrompt.trim();
   const basePrompt = trimmed || DEFAULT_SYSTEM_PROMPT;
   const toolPolicy = normalizeToolPolicy(config.toolPolicy);
@@ -114,7 +154,7 @@ Current task working directory:
 ${workingDirectory?.trim() || 'workspace root'}
 
 Current tool approval policy:
-${describeToolPolicyForPrompt(toolPolicy).join('\n')}`;
+${describeToolPolicyForPrompt(toolPolicy).join('\n')}${formatProjectMemoryPrompt(projectContext)}`;
 };
 
 const normalizeBaseUrl = (input: string): string => input.trim().replace(/\/+$/, '');
@@ -184,6 +224,7 @@ export class LlmService {
   public constructor(
     private readonly workspaceRoot: string,
     private readonly sessionStore: SessionStore,
+    private readonly getProjectContext: (() => Promise<ProjectMemorySnapshot>) | null = null,
   ) {
     this.initializationPromise = this.loadPersistedSessions();
   }
@@ -458,7 +499,7 @@ export class LlmService {
 
   public async resetSession(sessionId: string, config: AppConfig): Promise<void> {
     await this.initializationPromise;
-    const prompt = buildPrompt(config);
+    const prompt = await this.buildRunPrompt(config);
     const session: Session = {
       prompt,
       messages: [
@@ -500,7 +541,8 @@ export class LlmService {
 
     const client = buildOpenAIClient(config);
     const effectiveWorkingDirectory = request.workingDirectory?.trim() || this.workspaceRoot;
-    const hookedPrompt = await this.applyPromptHooks(request, buildPrompt(config, request.workingDirectory), effectiveWorkingDirectory, emitEvent);
+    const basePrompt = await this.buildRunPrompt(config, request.workingDirectory);
+    const hookedPrompt = await this.applyPromptHooks(request, basePrompt, effectiveWorkingDirectory, emitEvent);
     const prompt = hookedPrompt.systemPrompt;
     const session = this.ensureSession(sessionId, prompt);
 
@@ -646,7 +688,8 @@ export class LlmService {
     }
 
     const effectiveWorkingDirectory = request.workingDirectory?.trim() || this.workspaceRoot;
-    const hookedPrompt = await this.applyPromptHooks(request, buildPrompt(config, request.workingDirectory), effectiveWorkingDirectory, emitEvent);
+    const basePrompt = await this.buildRunPrompt(config, request.workingDirectory);
+    const hookedPrompt = await this.applyPromptHooks(request, basePrompt, effectiveWorkingDirectory, emitEvent);
     const prompt = hookedPrompt.systemPrompt;
     const session = this.ensureSession(sessionId, prompt);
     session.messages.push({
@@ -859,7 +902,8 @@ export class LlmService {
     }
 
     const effectiveWorkingDirectory = request.workingDirectory?.trim() || this.workspaceRoot;
-    const hookedPrompt = await this.applyPromptHooks(request, buildPrompt(config, request.workingDirectory), effectiveWorkingDirectory, emitEvent);
+    const basePrompt = await this.buildRunPrompt(config, request.workingDirectory);
+    const hookedPrompt = await this.applyPromptHooks(request, basePrompt, effectiveWorkingDirectory, emitEvent);
     const prompt = hookedPrompt.systemPrompt;
     const session = this.ensureSession(sessionId, prompt);
     session.messages.push({
@@ -1051,6 +1095,19 @@ export class LlmService {
 
     const provider = getProviderPreset(config.providerId);
     return normalizeBaseUrl(resolveBaseUrl(config.providerId, config.baseUrl)) === normalizeBaseUrl(provider.baseUrl);
+  }
+
+  private async buildRunPrompt(config: AppConfig, workingDirectory?: string | null): Promise<string> {
+    let projectContext: ProjectMemorySnapshot | null = null;
+    if (this.getProjectContext) {
+      try {
+        projectContext = await this.getProjectContext();
+      } catch {
+        projectContext = null;
+      }
+    }
+
+    return buildPrompt(config, workingDirectory, projectContext);
   }
 
   private beginHookedRun(requestId: string): void {

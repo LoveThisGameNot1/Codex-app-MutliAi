@@ -378,6 +378,45 @@ export type ArtifactPreviewScreenshotResult = {
   capturedAt: string;
 };
 
+export type ProjectMemoryRecord = {
+  id: string;
+  workspaceRoot: string;
+  title: string;
+  content: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WorkspaceInstructionsRecord = {
+  workspaceRoot: string;
+  content: string;
+  updatedAt: string;
+};
+
+export type ProjectMemorySnapshot = {
+  workspaceRoot: string;
+  instructions: WorkspaceInstructionsRecord;
+  memories: ProjectMemoryRecord[];
+};
+
+export type CreateProjectMemoryInput = {
+  title: string;
+  content: string;
+  tags?: string[];
+};
+
+export type UpdateProjectMemoryInput = {
+  id: string;
+  title?: string;
+  content?: string;
+  tags?: string[];
+};
+
+export type UpdateWorkspaceInstructionsInput = {
+  content: string;
+};
+
 export type StartChatRequest = {
   requestId: string;
   sessionId: string;
@@ -590,6 +629,11 @@ export type DesktopApi = {
   getConfig: () => Promise<AppConfig>;
   updateConfig: (update: AppConfigUpdate) => Promise<AppConfig>;
   listAvailableModels: (config: AppConfig) => Promise<ModelCatalogResult>;
+  getProjectMemorySnapshot: () => Promise<ProjectMemorySnapshot>;
+  createProjectMemory: (input: CreateProjectMemoryInput) => Promise<ProjectMemoryRecord>;
+  updateProjectMemory: (input: UpdateProjectMemoryInput) => Promise<ProjectMemoryRecord>;
+  deleteProjectMemory: (memoryId: string) => Promise<void>;
+  updateWorkspaceInstructions: (input: UpdateWorkspaceInstructionsInput) => Promise<WorkspaceInstructionsRecord>;
   listSessions: () => Promise<PersistedSessionSummary[]>;
   loadSession: (sessionId: string) => Promise<PersistedSessionPayload | null>;
   deleteSession: (sessionId: string) => Promise<void>;

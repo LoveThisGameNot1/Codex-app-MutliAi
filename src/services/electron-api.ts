@@ -10,6 +10,7 @@ import type {
   CaptureArtifactPreviewInput,
   CheckMcpConnectorInput,
   ChatStreamEvent,
+  CreateProjectMemoryInput,
   CreateSafeTaskCloneInput,
   CreateAutomationInput,
   DesktopAppInfo,
@@ -28,12 +29,17 @@ import type {
   PersistedSessionPayload,
   PersistedSessionSummary,
   PluginRecord,
+  ProjectMemoryRecord,
+  ProjectMemorySnapshot,
   ResetChatRequest,
   ResolveToolApprovalInput,
   StartChatRequest,
   TaskCloneResult,
   UpdateAutomationInput,
+  UpdateProjectMemoryInput,
+  UpdateWorkspaceInstructionsInput,
   UpdatePluginStateInput,
+  WorkspaceInstructionsRecord,
 } from '../../shared/contracts';
 
 const requireDesktopApi = () => {
@@ -57,6 +63,17 @@ export const updateConfig = (update: AppConfigUpdate): Promise<AppConfig> =>
   requireDesktopApi().updateConfig(update);
 export const listAvailableModels = (config: AppConfig): Promise<ModelCatalogResult> =>
   requireDesktopApi().listAvailableModels(config);
+export const getProjectMemorySnapshot = (): Promise<ProjectMemorySnapshot> =>
+  requireDesktopApi().getProjectMemorySnapshot();
+export const createProjectMemory = (input: CreateProjectMemoryInput): Promise<ProjectMemoryRecord> =>
+  requireDesktopApi().createProjectMemory(input);
+export const updateProjectMemory = (input: UpdateProjectMemoryInput): Promise<ProjectMemoryRecord> =>
+  requireDesktopApi().updateProjectMemory(input);
+export const deleteProjectMemory = (memoryId: string): Promise<void> =>
+  requireDesktopApi().deleteProjectMemory(memoryId);
+export const updateWorkspaceInstructions = (
+  input: UpdateWorkspaceInstructionsInput,
+): Promise<WorkspaceInstructionsRecord> => requireDesktopApi().updateWorkspaceInstructions(input);
 export const getGitReview = (): Promise<GitReviewSnapshot> => requireDesktopApi().getGitReview();
 export const getGitDiff = (request: GitDiffRequest): Promise<GitDiffResult> =>
   requireDesktopApi().getGitDiff(request);

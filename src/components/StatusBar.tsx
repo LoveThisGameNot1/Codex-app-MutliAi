@@ -9,6 +9,7 @@ export const StatusBar = () => {
   const config = useAppStore((state) => state.config);
   const activeArtifactId = useAppStore((state) => state.activeArtifactId);
   const gitReview = useAppStore((state) => state.gitReview);
+  const projectMemory = useAppStore((state) => state.projectMemory);
   const workspaceTasks = useAppStore((state) => state.workspaceTasks);
   const unreadAutomationCount = countUnreadAutomationRuns(automationRuns, acknowledgedAutomationRunIds);
   const busyTasks = workspaceTasks.filter((task) => task.status === 'queued' || task.status === 'running' || task.status === 'blocked');
@@ -21,6 +22,7 @@ export const StatusBar = () => {
       : 'git review unavailable',
     `${automations.filter((automation) => automation.status === 'active').length} automations active`,
     `${unreadAutomationCount} unread automation updates`,
+    `${projectMemory.length} memories`,
     `${workspaceTasks.length} tasks`,
     activeArtifactId ? 'artifact selected' : 'artifact empty',
     appInfo ? `${appInfo.platform} | Node ${appInfo.nodeVersion}` : 'renderer booting',

@@ -370,6 +370,7 @@ export class ChatRuntime {
       case 'review':
       case 'plugins':
       case 'automations':
+      case 'memory':
       case 'settings': {
         if (command.targetSection) {
           state.setWorkspaceSection(command.targetSection);

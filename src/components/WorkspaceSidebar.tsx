@@ -54,6 +54,15 @@ const ClockIcon = () => (
   </svg>
 );
 
+const MemoryIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={iconClassName}>
+    <path d="M6 4.5h9.5L19 8v11.5H6V4.5Z" />
+    <path d="M15 4.5V8h4" />
+    <path d="M9 12h7" />
+    <path d="M9 15.5h5" />
+  </svg>
+);
+
 const FolderIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={iconClassName}>
     <path d="M3.5 7.5a2 2 0 0 1 2-2H10l2 2h6.5a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-9Z" />
@@ -87,6 +96,7 @@ const sectionDescriptions: Record<WorkspaceSection, string> = {
   plugins: 'Provider and tool integrations',
   planner: 'Structured execution plans',
   automations: 'Scheduled work and runs',
+  memory: 'Durable workspace memory',
   settings: 'Runtime configuration',
 };
 
@@ -116,6 +126,7 @@ export const WorkspaceSidebar = () => {
   const sessionId = useAppStore((state) => state.sessionId);
   const automations = useAppStore((state) => state.automations);
   const plans = useAppStore((state) => state.plans);
+  const projectMemory = useAppStore((state) => state.projectMemory);
   const automationRuns = useAppStore((state) => state.automationRuns);
   const acknowledgedAutomationRunIds = useAppStore((state) => state.acknowledgedAutomationRunIds);
   const workspaceSection = useAppStore((state) => state.workspaceSection);
@@ -150,6 +161,12 @@ export const WorkspaceSidebar = () => {
       label: 'Automations',
       icon: <ClockIcon />,
       badge: unreadAutomationCount > 0 ? String(unreadAutomationCount) : null,
+    },
+    {
+      key: 'memory',
+      label: 'Memory',
+      icon: <MemoryIcon />,
+      badge: projectMemory.length > 0 ? String(projectMemory.length) : null,
     },
   ];
 

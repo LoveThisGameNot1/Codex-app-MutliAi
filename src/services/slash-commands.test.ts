@@ -24,6 +24,13 @@ describe('slash command registry', () => {
     expect(invocation?.matched && invocation.args).toBe('src/services');
   });
 
+  it('opens project memory through slash commands', () => {
+    const invocation = parseSlashCommand('/remember');
+
+    expect(invocation?.matched && invocation.command.id).toBe('memory');
+    expect(invocation?.matched && invocation.command.targetSection).toBe('memory');
+  });
+
   it('returns null for normal chat prompts and incomplete slash input', () => {
     expect(parseSlashCommand('Build a React artifact')).toBeNull();
     expect(parseSlashCommand('/')).toBeNull();
@@ -75,6 +82,7 @@ describe('slash command registry', () => {
     expect(help).toContain('**Navigation**');
     expect(help).toContain('**Workspace**');
     expect(help).toContain('**Agent workflows**');
+    expect(help).toContain('`/memory`');
     expect(help).toContain('`/plan Optional goal`');
     expect(help).toContain('`/code-review Optional scope`');
     expect(help).toContain('`/dependency-audit Optional package manager or scope`');

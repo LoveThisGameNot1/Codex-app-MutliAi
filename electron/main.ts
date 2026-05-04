@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import {
   AppConfigUpdate,
   CaptureArtifactPreviewInput,
+  CreateProjectMemoryInput,
   CreateAutomationInput,
   CancelChatRequest,
   CheckMcpConnectorInput,
@@ -14,6 +15,8 @@ import {
   ResetChatRequest,
   StartChatRequest,
   UpdateAutomationInput,
+  UpdateProjectMemoryInput,
+  UpdateWorkspaceInstructionsInput,
   UpdatePluginStateInput,
 } from '../shared/contracts';
 import { AutomationService } from './automation-service';
@@ -24,6 +27,7 @@ import { LlmService } from './llm-service';
 import { McpConnectorService } from './mcp-connector-service';
 import { PluginService } from './plugin-service';
 import { PreviewCaptureService } from './preview-capture-service';
+import { ProjectMemoryService } from './project-memory-service';
 import { SessionStore, toSessionSummary } from './session-store';
 import { TaskWorkspaceService } from './task-workspace-service';
 
@@ -34,7 +38,8 @@ const workspaceRoot = process.cwd();
 const configStore = new ConfigStore();
 const sessionStore = new SessionStore(app.getPath('userData'));
 const automationStore = new AutomationStore(app.getPath('userData'));
-const llmService = new LlmService(workspaceRoot, sessionStore);
+const projectMemoryService = new ProjectMemoryService(app.getPath('userData'), workspaceRoot);
+const llmService = new LlmService(workspaceRoot, sessionStore, () => projectMemoryService.getPromptContext());
 const gitService = new GitService(workspaceRoot);
 const pluginService = new PluginService(workspaceRoot, app.getPath('userData'));
 const mcpConnectorService = new McpConnectorService(pluginService);
@@ -106,6 +111,17 @@ const registerIpcHandlers = (): void => {
   ipcMain.handle('config:get', () => configStore.get());
   ipcMain.handle('config:update', (_event, update: AppConfigUpdate) => configStore.update(update));
   ipcMain.handle('models:list', (_event, config) => llmService.listAvailableModels(config));
+  ipcMain.handle('project-memory:get-snapshot', () => projectMemoryService.getSnapshot());
+  ipcMain.handle('project-memory:create', (_event, input: CreateProjectMemoryInput) =>
+    projectMemoryService.createMemory(input),
+  );
+  ipcMain.handle('project-memory:update', (_event, input: UpdateProjectMemoryInput) =>
+    projectMemoryService.updateMemory(input),
+  );
+  ipcMain.handle('project-memory:delete', (_event, memoryId: string) => projectMemoryService.deleteMemory(memoryId));
+  ipcMain.handle('workspace-instructions:update', (_event, input: UpdateWorkspaceInstructionsInput) =>
+    projectMemoryService.updateInstructions(input),
+  );
   ipcMain.handle('git:review', () => gitService.getReviewSnapshot());
   ipcMain.handle('git:diff', (_event, request) => gitService.getDiff(request));
   ipcMain.handle('git:draft-commit', () => gitService.draftCommitMessage());
