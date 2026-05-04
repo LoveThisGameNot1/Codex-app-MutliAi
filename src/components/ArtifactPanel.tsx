@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useMemo } from 'react';
 import { canPreviewArtifact } from '@/services/artifact-preview';
 import { ArtifactPreviewFrame } from '@/components/ArtifactPreviewFrame';
 import { useAppStore } from '@/store/app-store';
@@ -18,13 +18,18 @@ const languageMap: Record<string, string> = {
 };
 
 export const ArtifactPanel = () => {
-  const artifacts = useAppStore((state) => state.artifacts.filter((artifact) => artifact.taskId === state.activeTaskId));
+  const allArtifacts = useAppStore((state) => state.artifacts);
+  const activeTaskId = useAppStore((state) => state.activeTaskId);
   const activeArtifactId = useAppStore((state) => state.activeArtifactId);
   const setActiveArtifactId = useAppStore((state) => state.setActiveArtifactId);
   const artifactView = useAppStore((state) => state.artifactView);
   const setArtifactView = useAppStore((state) => state.setArtifactView);
   const activeTask = useAppStore((state) => state.workspaceTasks.find((task) => task.id === state.activeTaskId) ?? null);
 
+  const artifacts = useMemo(
+    () => allArtifacts.filter((artifact) => artifact.taskId === activeTaskId),
+    [activeTaskId, allArtifacts],
+  );
   const activeArtifact = artifacts.find((artifact) => artifact.id === activeArtifactId) ?? artifacts[0] ?? null;
   const previewEnabled = canPreviewArtifact(activeArtifact);
 

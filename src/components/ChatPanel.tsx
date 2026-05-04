@@ -83,10 +83,8 @@ const sectionMeta = {
 export const ChatPanel = () => {
   const activeTaskId = useAppStore((state) => state.activeTaskId);
   const workspaceTasks = useAppStore((state) => state.workspaceTasks);
-  const messages = useAppStore((state) => state.messages.filter((message) => message.taskId === state.activeTaskId));
-  const toolExecutions = useAppStore((state) =>
-    state.toolExecutions.filter((tool) => tool.taskId === state.activeTaskId),
-  );
+  const allMessages = useAppStore((state) => state.messages);
+  const allToolExecutions = useAppStore((state) => state.toolExecutions);
   const lastError = useAppStore((state) => state.lastError);
   const isStreaming = useAppStore((state) => state.isStreaming);
   const workspaceSection = useAppStore((state) => state.workspaceSection);
@@ -95,6 +93,14 @@ export const ChatPanel = () => {
   const pendingToolApprovals = useAppStore((state) => state.pendingToolApprovals);
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const activeTask = workspaceTasks.find((task) => task.id === activeTaskId) ?? null;
+  const messages = useMemo(
+    () => allMessages.filter((message) => message.taskId === activeTaskId),
+    [activeTaskId, allMessages],
+  );
+  const toolExecutions = useMemo(
+    () => allToolExecutions.filter((tool) => tool.taskId === activeTaskId),
+    [activeTaskId, allToolExecutions],
+  );
 
   useEffect(() => {
     if (workspaceSection !== 'chat') {
