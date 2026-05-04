@@ -546,6 +546,14 @@ export const SettingsPanel = ({ embedded = false }: { embedded?: boolean }) => {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-slate-100">{session.title}</p>
                   <p className="mt-1 line-clamp-2 text-sm text-slate-400">{session.preview}</p>
+                  {session.resumeSummary ? (
+                    <div className="mt-2 rounded-2xl border border-cyan-300/15 bg-cyan-300/5 px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
+                        Resume Summary
+                      </p>
+                      <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-400">{session.resumeSummary}</p>
+                    </div>
+                  ) : null}
                   <p className="mt-2 text-xs text-slate-500">
                     {new Date(session.updatedAt).toLocaleString()} | {session.messageCount} messages
                   </p>

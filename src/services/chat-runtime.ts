@@ -1,4 +1,5 @@
-import type { ArtifactRecord, ChatStreamEvent } from '../../shared/contracts';
+import { buildSessionResumeSummary } from '../../shared/change-summary';
+import type { ArtifactRecord, ChatMessage, ChatStreamEvent } from '../../shared/contracts';
 import {
   cancelChat,
   createSafeTaskClone,
@@ -269,11 +270,23 @@ export class ChatRuntime {
     const hydrated = hydratePersistedSession(session);
     const lastUserMessage = [...hydrated.messages].reverse().find((message) => message.role === 'user');
     const title = lastUserMessage?.content.slice(0, 48) || createTaskTitleFromPrompt(session.prompt);
+    const resumeSummary = buildSessionResumeSummary({
+      prompt: session.prompt,
+      updatedAt: session.updatedAt,
+      messages: session.messages,
+    });
+    const resumeMessage: ChatMessage = {
+      id: `${session.id}:resume:${createId()}`,
+      role: 'system',
+      content: `Resumed session summary\n\n${resumeSummary}`,
+      createdAt: new Date().toISOString(),
+      status: 'complete',
+    };
 
     useAppStore.getState().loadPersistedConversation({
       sessionId: createId(),
       title,
-      messages: hydrated.messages,
+      messages: [...hydrated.messages, resumeMessage],
       artifacts: hydrated.artifacts,
       toolExecutions: hydrated.toolExecutions,
     });

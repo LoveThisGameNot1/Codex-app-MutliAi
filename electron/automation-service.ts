@@ -10,6 +10,7 @@ import type {
   CreateAutomationInput,
   UpdateAutomationInput,
 } from '../shared/contracts';
+import { buildAutomationChangeSummary } from '../shared/change-summary';
 import { deriveAutomationToolPolicy } from '../shared/tool-policy';
 import { expandWorkflowCommand } from '../shared/workflow-templates';
 import { AutomationStore } from './automation-store';
@@ -317,6 +318,9 @@ export class AutomationService {
     this.runningAutomations.add(automationId);
     this.clearTimer(automationId);
 
+    const previousRuns = await this.automationStore.loadRuns();
+    const previousRun =
+      previousRuns.find((run) => run.automationId === automation.id && run.status !== 'running') ?? null;
     const startedAt = nowIso();
     const runId = createId();
     const runningRun: AutomationRunRecord = {
@@ -327,6 +331,11 @@ export class AutomationService {
       startedAt,
       summary: `Running "${automation.name}"...`,
     };
+    const initialChangeSummary = buildAutomationChangeSummary({
+      currentRun: runningRun,
+      previousRun,
+    });
+    runningRun.changeSummary = initialChangeSummary;
 
     await this.automationStore.upsertRun(runningRun);
     this.emitEvent({ type: 'automation.changed' });
@@ -342,9 +351,17 @@ export class AutomationService {
       const automationPrompt = expandAutomationWorkflowPrompt(automation.prompt);
       const updateRunningState = async (summary: string): Promise<void> => {
         const timestamp = nowIso();
+        const changeSummary = buildAutomationChangeSummary({
+          currentRun: {
+            ...runningRun,
+            summary,
+          },
+          previousRun,
+        });
         await this.automationStore.upsertRun({
           ...runningRun,
           summary,
+          changeSummary,
         });
         await this.automationStore.upsertAutomation({
           ...automation,
@@ -353,6 +370,7 @@ export class AutomationService {
           nextRunAt: null,
           lastRunStatus: 'running',
           lastResultSummary: truncate(summary, 220),
+          lastChangeSummary: changeSummary,
         });
         this.emitEvent({ type: 'automation.changed' });
       };
@@ -396,6 +414,10 @@ export class AutomationService {
         outputCharacters: sanitizedOutput.outputCharacters,
         outputTruncated: sanitizedOutput.outputTruncated,
       };
+      completedRun.changeSummary = buildAutomationChangeSummary({
+        currentRun: completedRun,
+        previousRun,
+      });
 
       const updatedAutomation: AutomationRecord = {
         ...automation,
@@ -407,6 +429,7 @@ export class AutomationService {
             : null,
         lastRunStatus: 'completed',
         lastResultSummary: summary,
+        lastChangeSummary: completedRun.changeSummary,
       };
 
       await this.automationStore.upsertRun(completedRun);
@@ -427,6 +450,10 @@ export class AutomationService {
         outputCharacters: sanitizedOutput.outputCharacters,
         outputTruncated: sanitizedOutput.outputTruncated,
       };
+      failedRun.changeSummary = buildAutomationChangeSummary({
+        currentRun: failedRun,
+        previousRun,
+      });
       const updatedAutomation: AutomationRecord = {
         ...automation,
         updatedAt: finishedAt,
@@ -434,6 +461,7 @@ export class AutomationService {
         nextRunAt: automation.status === 'active' ? computeNextRunAt(automation.schedule, finishedAt) : null,
         lastRunStatus: 'failed',
         lastResultSummary: truncate(message, 220),
+        lastChangeSummary: failedRun.changeSummary,
       };
 
       await this.automationStore.upsertRun(failedRun);

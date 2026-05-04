@@ -109,6 +109,63 @@ describe('AutomationService', () => {
     expect(events.length).toBeGreaterThan(0);
   });
 
+  it('stores change summaries for first and repeated automation runs', async () => {
+    const baseDir = await createTempDir();
+    const automationStore = new AutomationStore(baseDir);
+    const sessionStore = new SessionStore(baseDir);
+    const outputs = ['First dependency sweep passed.', 'Second dependency sweep found a warning.'];
+
+    const llmServiceStub = {
+      startChat: async ({ sessionId }: { sessionId: string }) => {
+        const output = outputs.shift() ?? 'No new output.';
+        await sessionStore.upsert({
+          id: sessionId,
+          prompt: 'automation prompt',
+          updatedAt: new Date().toISOString(),
+          messages: [
+            { role: 'developer', content: 'automation prompt' },
+            { role: 'assistant', content: output },
+          ],
+        });
+      },
+    } as never;
+
+    const service = new AutomationService(
+      automationStore,
+      sessionStore,
+      llmServiceStub,
+      async () => ({
+        providerId: DEFAULT_PROVIDER_ID,
+        baseUrl: DEFAULT_BASE_URL,
+        apiKey: 'test-key',
+        model: 'gpt-5.4',
+        systemPrompt: 'system',
+        toolPolicy: DEFAULT_TOOL_POLICY,
+      }),
+      () => undefined,
+      () => undefined,
+    );
+
+    const automation = await service.createAutomation({
+      name: 'Dependency sweep',
+      prompt: 'Inspect dependencies.',
+      schedule: {
+        kind: 'interval',
+        intervalMinutes: 30,
+      },
+    });
+
+    const firstRun = await service.runAutomationNow(automation.id);
+    const secondRun = await service.runAutomationNow(automation.id);
+    const automations = await service.listAutomations();
+
+    expect(firstRun.changeSummary).toContain('First recorded run');
+    expect(secondRun.changeSummary).toContain('Output changed since last run');
+    expect(secondRun.changeSummary).toContain('Previous completed');
+    expect(secondRun.changeSummary).toContain('Current completed');
+    expect(automations[0]?.lastChangeSummary).toBe(secondRun.changeSummary);
+  });
+
   it('clamps automation tool policy before starting unattended runs', async () => {
     const baseDir = await createTempDir();
     const automationStore = new AutomationStore(baseDir);

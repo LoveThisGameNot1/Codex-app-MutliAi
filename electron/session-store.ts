@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
+import { buildSessionResumeSummary, type SummaryChatMessage } from '../shared/change-summary';
 import type { PersistedSessionSummary } from '../shared/contracts';
 
 const MAX_SESSIONS = 40;
@@ -50,6 +51,26 @@ const stringifyContent = (content: ChatCompletionMessageParam['content']): strin
 const summarizeMessage = (message: ChatCompletionMessageParam | undefined): string =>
   message ? collapseWhitespace(stringifyContent(message.content)) : '';
 
+const toSummaryMessages = (messages: ChatCompletionMessageParam[]): SummaryChatMessage[] =>
+  messages.flatMap((message) => {
+    if (
+      message.role !== 'developer' &&
+      message.role !== 'system' &&
+      message.role !== 'user' &&
+      message.role !== 'assistant' &&
+      message.role !== 'tool'
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        role: message.role,
+        content: stringifyContent(message.content),
+      },
+    ];
+  });
+
 export const toSessionSummary = (session: PersistedSession): PersistedSessionSummary => {
   const firstUserMessage = session.messages.find((message) => message.role === 'user');
   const latestVisibleMessage = [...session.messages]
@@ -67,6 +88,11 @@ export const toSessionSummary = (session: PersistedSession): PersistedSessionSum
     preview,
     updatedAt: session.updatedAt,
     messageCount: session.messages.length,
+    resumeSummary: buildSessionResumeSummary({
+      prompt: session.prompt,
+      updatedAt: session.updatedAt,
+      messages: toSummaryMessages(session.messages),
+    }),
   };
 };
 

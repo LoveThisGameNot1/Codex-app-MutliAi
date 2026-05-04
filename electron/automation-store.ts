@@ -102,6 +102,7 @@ const sanitizeAutomation = (value: unknown): AutomationRecord | null => {
         ? record.lastRunStatus
         : undefined,
     lastResultSummary: typeof record.lastResultSummary === 'string' ? record.lastResultSummary : undefined,
+    lastChangeSummary: typeof record.lastChangeSummary === 'string' ? record.lastChangeSummary : undefined,
   };
 };
 
@@ -133,6 +134,7 @@ const sanitizeRun = (value: unknown): AutomationRunRecord | null => {
     output: typeof record.output === 'string' ? record.output : undefined,
     outputCharacters: typeof record.outputCharacters === 'number' ? record.outputCharacters : undefined,
     outputTruncated: typeof record.outputTruncated === 'boolean' ? record.outputTruncated : undefined,
+    changeSummary: typeof record.changeSummary === 'string' ? record.changeSummary : undefined,
   };
 };
 

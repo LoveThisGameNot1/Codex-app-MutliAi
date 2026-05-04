@@ -468,6 +468,7 @@ export type AutomationRecord = {
   nextRunAt?: string | null;
   lastRunStatus?: AutomationRunStatus;
   lastResultSummary?: string;
+  lastChangeSummary?: string;
 };
 
 export type AutomationRunRecord = {
@@ -481,6 +482,7 @@ export type AutomationRunRecord = {
   output?: string;
   outputCharacters?: number;
   outputTruncated?: boolean;
+  changeSummary?: string;
 };
 
 export type CreateAutomationInput = {
@@ -504,6 +506,7 @@ export type PersistedSessionSummary = {
   preview: string;
   updatedAt: string;
   messageCount: number;
+  resumeSummary?: string;
 };
 
 export type PersistedSessionPayload = {

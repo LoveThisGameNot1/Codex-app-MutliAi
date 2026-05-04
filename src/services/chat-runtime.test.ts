@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ChatStreamEvent, StartChatRequest } from '../../shared/contracts';
+import type { ChatStreamEvent, PersistedSessionPayload, StartChatRequest } from '../../shared/contracts';
 import { DEFAULT_BASE_URL, DEFAULT_MODEL, DEFAULT_PROVIDER_ID, DEFAULT_SYSTEM_PROMPT } from '../../shared/contracts';
 import { DEFAULT_TOOL_POLICY } from '../../shared/tool-policy';
 import { useAppStore } from '@/store/app-store';
@@ -21,7 +21,7 @@ const runtimeMocks = vi.hoisted(() => ({
     ...config,
   })),
   listSessionsMock: vi.fn(async () => []),
-  loadSessionMock: vi.fn(async () => null),
+  loadSessionMock: vi.fn<(sessionId: string) => Promise<PersistedSessionPayload | null>>(async () => null),
   deleteSessionMock: vi.fn(async () => undefined),
   resolveToolApprovalMock: vi.fn(async () => undefined),
   createSafeTaskCloneMock: vi.fn(async () => ({
@@ -229,6 +229,32 @@ describe('ChatRuntime', () => {
     });
 
     runtime.dispose();
+  });
+
+  it('adds a resume summary when loading a persisted session', async () => {
+    runtimeMocks.loadSessionMock.mockResolvedValueOnce({
+      id: 'saved-session-1',
+      prompt: 'system prompt',
+      updatedAt: '2026-05-04T20:00:00.000Z',
+      messages: [
+        { role: 'developer', content: 'system prompt' },
+        { role: 'user', content: 'Continue the automation summary work.' },
+        { role: 'assistant', content: 'The previous run added tests and UI copy.' },
+      ],
+    });
+
+    const runtime = new ChatRuntime();
+    await runtime.loadPersistedSession('saved-session-1');
+
+    const state = useAppStore.getState();
+    expect(runtimeMocks.loadSessionMock).toHaveBeenCalledWith('saved-session-1');
+    expect(state.messages.at(-1)).toMatchObject({
+      role: 'system',
+      content: expect.stringContaining('Resumed session summary'),
+      status: 'complete',
+    });
+    expect(state.messages.at(-1)?.content).toContain('Latest user: Continue the automation summary work.');
+    expect(state.messages.at(-1)?.content).toContain('Latest assistant: The previous run added tests and UI copy.');
   });
 
   it('creates a structured plan from the plan slash command', async () => {

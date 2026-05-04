@@ -510,6 +510,14 @@ export const AutomationPanel = () => {
                   </span>
                 </summary>
                 <p className="mt-3 text-sm text-slate-400">{run.summary}</p>
+                {run.changeSummary ? (
+                  <div className="mt-3 rounded-2xl border border-cyan-300/15 bg-cyan-300/5 px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
+                      Since Previous Run
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">{run.changeSummary}</p>
+                  </div>
+                ) : null}
                 <p className="mt-2 text-xs text-slate-500">{formatAutomationTimestamp(run.finishedAt ?? run.startedAt)}</p>
                 {run.output ? (
                   <>
@@ -615,6 +623,14 @@ export const AutomationPanel = () => {
                       <span>Last status: {automation.lastRunStatus || 'No runs yet'}</span>
                       <span>Last result: {automation.lastResultSummary || 'No runs yet'}</span>
                     </div>
+                    {automation.lastChangeSummary ? (
+                      <div className="mt-3 rounded-2xl border border-cyan-300/15 bg-cyan-300/5 px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
+                          What Changed
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-slate-400">{automation.lastChangeSummary}</p>
+                      </div>
+                    ) : null}
                     {latestRun?.output ? (
                       <details className="mt-3 rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3">
                         <summary className="cursor-pointer text-sm text-slate-300">Latest output</summary>

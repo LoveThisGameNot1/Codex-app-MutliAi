@@ -92,6 +92,8 @@ describe('SessionStore', () => {
     expect(summary.title).toBe('Build a responsive dashboard for deployment metrics.');
     expect(summary.preview).toBe('Here is the dashboard artifact and the rollout checklist.');
     expect(summary.messageCount).toBe(3);
+    expect(summary.resumeSummary).toContain('Latest user: Build a responsive dashboard');
+    expect(summary.resumeSummary).toContain('Latest assistant: Here is the dashboard artifact');
   });
 
   it('falls back to the persisted prompt when no user message exists', () => {
