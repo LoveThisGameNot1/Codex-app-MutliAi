@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo } from 'react';
+﻿import { Suspense, lazy, useMemo } from 'react';
 import { canPreviewArtifact } from '@/services/artifact-preview';
 import { ArtifactPreviewFrame } from '@/components/ArtifactPreviewFrame';
 import { useAppStore } from '@/store/app-store';
@@ -34,46 +34,50 @@ export const ArtifactPanel = () => {
   const previewEnabled = canPreviewArtifact(activeArtifact);
 
   return (
-    <section className="flex min-h-[600px] flex-col rounded-[32px] border border-white/10 bg-slate-950/75 p-5 shadow-panel backdrop-blur">
-      <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.3em] text-emerald-300/80">Artifact Studio</p>
-          <h2 className="mt-2 text-2xl font-semibold text-white">Interactive Output Surface</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            Parsed artifacts for {activeTask ? `"${activeTask.title}"` : 'the current task'} are streamed here in parallel to the chat. Use code view for inspection and preview mode for HTML or React artifacts.
+    <section className="glass-panel-strong flex min-h-0 flex-col overflow-hidden rounded-[32px] p-4">
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-[0.32em] text-emerald-200/75">Artifact Studio</p>
+          <h2 className="mt-2 truncate text-2xl font-semibold tracking-[-0.03em] text-white">
+            {activeArtifact?.title || 'Output surface'}
+          </h2>
+          <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted">
+            {activeTask
+              ? `Artifacts for ${activeTask.title} stream here as code or live preview.`
+              : 'Generated code, HTML, and React previews will appear here.'}
           </p>
         </div>
 
-        <div className="flex gap-2 self-start rounded-full border border-white/10 bg-white/5 p-1">
+        <div className="flex shrink-0 rounded-full border border-white/10 bg-black/20 p-1">
           <button
             type="button"
             onClick={() => setArtifactView('code')}
             className={cn(
-              'rounded-full px-4 py-2 text-sm transition',
-              artifactView === 'code' ? 'bg-sky-400/20 text-sky-100' : 'text-slate-400 hover:text-slate-200',
+              'rounded-full px-3 py-1.5 text-xs font-medium transition',
+              artifactView === 'code' ? 'bg-sky-300/15 text-sky-100' : 'text-slate-400 hover:text-slate-200',
             )}
           >
-            Code View
+            Code
           </button>
           <button
             type="button"
             disabled={!previewEnabled}
             onClick={() => setArtifactView('preview')}
             className={cn(
-              'rounded-full px-4 py-2 text-sm transition',
+              'rounded-full px-3 py-1.5 text-xs font-medium transition',
               artifactView === 'preview'
-                ? 'bg-emerald-400/20 text-emerald-100'
+                ? 'bg-emerald-300/15 text-emerald-100'
                 : previewEnabled
                   ? 'text-slate-400 hover:text-slate-200'
                   : 'cursor-not-allowed text-slate-600',
             )}
           >
-            Live Preview
+            Preview
           </button>
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
         {artifacts.length === 0 ? (
           <span className="rounded-full border border-dashed border-slate-700 px-4 py-2 text-sm text-slate-500">
             No artifacts yet
@@ -88,14 +92,14 @@ export const ArtifactPanel = () => {
               key={artifact.id}
               onClick={() => setActiveArtifactId(artifact.id)}
               className={cn(
-                'rounded-full border px-4 py-2 text-left text-sm transition',
+                'min-w-[160px] rounded-2xl border px-3 py-2 text-left text-sm transition',
                 isActive
-                  ? 'border-sky-400/30 bg-sky-400/10 text-sky-100'
-                  : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-200',
+                  ? 'border-sky-300/25 bg-sky-300/10 text-sky-100 shadow-glow'
+                  : 'border-white/10 bg-white/[0.035] text-slate-400 hover:bg-white/[0.06] hover:text-slate-200',
               )}
             >
-              <span className="block font-medium">{artifact.title}</span>
-              <span className="mt-1 block text-[11px] uppercase tracking-[0.2em] text-inherit/80">
+              <span className="block truncate font-medium">{artifact.title}</span>
+              <span className="mt-1 block text-[10px] uppercase tracking-[0.2em] text-inherit/75">
                 {artifact.type} | {artifact.language}
               </span>
             </button>
@@ -103,16 +107,14 @@ export const ArtifactPanel = () => {
         })}
       </div>
 
-      <div className="flex-1 overflow-hidden rounded-[28px] border border-white/10 bg-slate-900/70">
+      <div className="min-h-0 flex-1 overflow-hidden rounded-[28px] border border-white/10 bg-[#050912]/90">
         {!activeArtifact ? (
-          <div className="flex h-full min-h-[480px] items-center justify-center p-8">
-            <div className="max-w-lg text-center">
-              <p className="text-sm uppercase tracking-[0.3em] text-slate-500">Awaiting Artifact</p>
-              <p className="mt-4 text-lg font-medium text-slate-200">
-                When the assistant emits an artifact tag, the extracted content will stream into this panel.
-              </p>
-              <p className="mt-3 text-sm leading-6 text-slate-400">
-                React artifacts render in a sandboxed iframe, while all artifacts remain inspectable in Monaco.
+          <div className="grid h-full min-h-[420px] place-items-center p-8">
+            <div className="max-w-md text-center">
+              <p className="text-xs uppercase tracking-[0.32em] text-slate-500">Awaiting artifact</p>
+              <h3 className="mt-4 text-2xl font-semibold text-slate-100">The canvas is ready.</h3>
+              <p className="mt-3 text-sm leading-6 text-muted">
+                Ask the agent for a UI preview or code block. Parsed artifact tags will land here automatically.
               </p>
             </div>
           </div>
@@ -121,8 +123,8 @@ export const ArtifactPanel = () => {
         ) : (
           <Suspense
             fallback={
-              <div className="flex h-full min-h-[540px] items-center justify-center text-sm text-slate-400">
-                Loading Monaco editor...
+              <div className="grid h-full min-h-[540px] place-items-center text-sm text-slate-400">
+                Loading editor...
               </div>
             }
           >
@@ -140,7 +142,8 @@ export const ArtifactPanel = () => {
                 wordWrap: 'on',
                 smoothScrolling: true,
                 tabSize: 2,
-                padding: { top: 20 },
+                padding: { top: 20, bottom: 20 },
+                renderLineHighlight: 'gutter',
               }}
             />
           </Suspense>

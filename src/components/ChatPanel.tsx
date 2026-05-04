@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+﻿import { useEffect, useMemo, useRef } from 'react';
 import { ApprovalCenter } from '@/components/ApprovalCenter';
 import { AutomationInbox } from '@/components/AutomationInbox';
 import { AutomationPanel } from '@/components/AutomationPanel';
@@ -16,10 +16,10 @@ import { useAppStore } from '@/store/app-store';
 import { cn } from '@/utils/cn';
 
 const roleStyles: Record<string, string> = {
-  user: 'border-sky-400/20 bg-sky-500/10',
-  assistant: 'border-white/10 bg-white/5',
-  tool: 'border-emerald-400/20 bg-emerald-500/10',
-  system: 'border-amber-400/20 bg-amber-500/10',
+  user: 'border-sky-300/20 bg-sky-300/[0.085]',
+  assistant: 'border-white/10 bg-white/[0.045]',
+  tool: 'border-emerald-300/20 bg-emerald-300/[0.08]',
+  system: 'border-amber-300/20 bg-amber-300/[0.08]',
 };
 
 const roleLabels: Record<string, string> = {
@@ -31,52 +31,44 @@ const roleLabels: Record<string, string> = {
 
 const sectionMeta = {
   chat: {
-    kicker: 'Workspace Chat',
-    title: 'Tool-aware conversation',
-    description:
-      'Stream markdown into the timeline, route artifacts into the studio, and keep approvals and automation updates in one place.',
+    eyebrow: 'Conversation',
+    title: 'Agent desk',
+    description: 'A focused command surface for prompts, approvals, tool output, and parallel tasks.',
   },
   search: {
-    kicker: 'Workspace Search',
-    title: 'Search sessions, automations, and artifacts',
-    description:
-      'A calmer index over everything we have generated or scheduled so far, without leaving the current workspace.',
+    eyebrow: 'Search',
+    title: 'Workspace index',
+    description: 'Find sessions, generated artifacts, automations, and useful historical context.',
   },
   review: {
-    kicker: 'Git Review',
-    title: 'Changed files, staged work, and diff previews',
-    description:
-      'Inspect the repository state from inside the workspace, including staged and unstaged files plus inline diff previews.',
+    eyebrow: 'Review',
+    title: 'Repository cockpit',
+    description: 'Inspect staged and unstaged work, draft commits, and review code without leaving the app.',
   },
   plugins: {
-    kicker: 'Plugins & Integrations',
-    title: 'Inspect active providers and tool surfaces',
-    description:
-      'See which integrations are live today and how the current model profile affects agent-style behavior.',
+    eyebrow: 'Plugins',
+    title: 'Capability layer',
+    description: 'Manage providers, integrations, plugin state, and external tool surfaces.',
   },
   planner: {
-    kicker: 'Execution Planner',
-    title: 'Plan larger goals before running agents',
-    description:
-      'Break broad work into concrete steps, track progress, and queue structured plans back into chat.',
+    eyebrow: 'Planner',
+    title: 'Execution map',
+    description: 'Turn broad goals into concrete steps before sending agents into the workspace.',
   },
   automations: {
-    kicker: 'Automation Center',
-    title: 'Manage scheduled work',
-    description:
-      'Create, edit, inspect, and supervise recurring tasks without burying them inside the chat stream.',
+    eyebrow: 'Automations',
+    title: 'Scheduled agent work',
+    description: 'Create and supervise recurring tasks with approval-aware unattended execution.',
   },
   memory: {
-    kicker: 'Project Memory',
-    title: 'Durable workspace knowledge',
-    description:
-      'Manage reusable instructions and persistent project facts that future model runs receive outside chat history.',
+    eyebrow: 'Memory',
+    title: 'Project knowledge',
+    description: 'Keep durable instructions and facts outside ephemeral chat history.',
   },
   settings: {
-    kicker: 'Runtime Settings',
-    title: 'Adjust providers, policies, and sessions',
-    description:
-      'Configure model access, tool guardrails, saved sessions, and the broader runtime from one dedicated surface.',
+    eyebrow: 'Settings',
+    title: 'Runtime controls',
+    description: 'Tune providers, models, policies, sessions, and local execution behavior.',
   },
 } as const;
 
@@ -132,62 +124,65 @@ export const ChatPanel = () => {
 
   const renderChatTimeline = () => (
     <>
-      <ApprovalCenter />
-      <AutomationInbox />
-      <TaskSwitcher />
+      <div className="grid gap-3 2xl:grid-cols-[minmax(0,1fr)_220px]">
+        <TaskSwitcher />
+        <div className="space-y-3">
+          <ApprovalCenter />
+          <AutomationInbox />
+        </div>
+      </div>
 
       <div
         ref={timelineRef}
-        className="flex-1 space-y-4 overflow-y-auto rounded-[28px] border border-white/10 bg-slate-950/70 p-5 shadow-panel backdrop-blur"
+        className="glass-panel min-h-0 flex-1 overflow-y-auto rounded-[30px] p-4"
       >
         {messages.length === 0 ? (
-          <div className="flex min-h-[280px] items-center justify-center rounded-[24px] border border-dashed border-slate-800 bg-slate-900/60 p-8 text-center">
+          <div className="grid min-h-[320px] place-items-center rounded-[26px] border border-dashed border-slate-700/70 bg-slate-950/45 p-8 text-center">
             <div className="max-w-md">
-              <p className="text-sm uppercase tracking-[0.3em] text-slate-500">Ready</p>
-              <p className="mt-4 text-lg font-medium text-slate-200">
-                {activeTask ? `Task "${activeTask.title}" is ready.` : 'Ask for code generation, file edits, terminal execution, or a self-contained UI artifact.'}
-              </p>
-              <p className="mt-3 text-sm leading-6 text-slate-400">
-                Example: &quot;Build a pricing page artifact in React and write the files into src/pages.&quot;
+              <p className="text-xs uppercase tracking-[0.32em] text-sky-200/70">Ready for work</p>
+              <h3 className="mt-4 text-2xl font-semibold text-white">
+                {activeTask ? activeTask.title : 'Start a new agent task'}
+              </h3>
+              <p className="mt-3 text-sm leading-6 text-muted">
+                Ask for file edits, terminal execution, browser validation, or a live artifact. The right panel stays ready for code and previews.
               </p>
             </div>
           </div>
         ) : null}
 
-        {messages.map((message) => (
-          <article
-            key={message.id}
-            className={cn(
-              'rounded-[24px] border px-4 py-4 shadow-lg shadow-slate-950/10',
-              roleStyles[message.role] ?? roleStyles.assistant,
-            )}
-          >
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <span className="rounded-full border border-white/10 bg-slate-950/70 px-3 py-1 text-xs uppercase tracking-[0.2em] text-slate-300">
-                  {roleLabels[message.role] ?? 'Message'}
+        <div className="space-y-3">
+          {messages.map((message) => (
+            <article
+              key={message.id}
+              className={cn('rounded-[26px] border px-4 py-4', roleStyles[message.role] ?? roleStyles.assistant)}
+            >
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-slate-300">
+                    {roleLabels[message.role] ?? 'Message'}
+                  </span>
+                  <span className="text-xs text-muted">{new Date(message.createdAt).toLocaleTimeString()}</span>
+                </div>
+                <span
+                  className={cn(
+                    'rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[0.2em]',
+                    message.status === 'error'
+                      ? 'bg-rose-400/10 text-rose-200'
+                      : message.status === 'streaming'
+                        ? 'bg-sky-400/10 text-sky-200'
+                        : 'bg-white/5 text-slate-400',
+                  )}
+                >
+                  {message.status}
                 </span>
-                <span className="text-xs text-slate-500">{new Date(message.createdAt).toLocaleTimeString()}</span>
               </div>
-              <span
-                className={cn(
-                  'rounded-full px-2.5 py-1 text-[11px] uppercase tracking-[0.2em]',
-                  message.status === 'error'
-                    ? 'bg-rose-400/10 text-rose-200'
-                    : message.status === 'streaming'
-                      ? 'bg-sky-400/10 text-sky-200'
-                      : 'bg-white/5 text-slate-400',
-                )}
-              >
-                {message.status}
-              </span>
-            </div>
 
-            <div className="space-y-3 text-sm text-slate-200">
-              <MarkdownMessage content={message.content || ' '} />
-            </div>
-          </article>
-        ))}
+              <div className="prose prose-invert max-w-none text-sm text-slate-200 prose-p:leading-7 prose-pre:border prose-pre:border-white/10 prose-pre:bg-black/30">
+                <MarkdownMessage content={message.content || ' '} />
+              </div>
+            </article>
+          ))}
+        </div>
       </div>
 
       {lastError ? (
@@ -212,12 +207,14 @@ export const ChatPanel = () => {
         return <ReviewPanel />;
       case 'automations':
         return (
-          <>
-            <ApprovalCenter />
-            <AutomationInbox />
-            <TaskSwitcher />
-            <AutomationPanel />
-          </>
+          <div className="min-h-0 overflow-y-auto pr-1">
+            <div className="space-y-4">
+              <ApprovalCenter />
+              <AutomationInbox />
+              <TaskSwitcher />
+              <AutomationPanel />
+            </div>
+          </div>
         );
       case 'memory':
         return <MemoryPanel />;
@@ -230,39 +227,39 @@ export const ChatPanel = () => {
   };
 
   return (
-    <section className="flex min-h-[600px] flex-col gap-4">
-      <div className="rounded-[28px] border border-white/10 bg-slate-900/75 p-5 shadow-panel backdrop-blur">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-sky-300/80">{activeSectionMeta.kicker}</p>
-            <h2 className="mt-2 text-2xl font-semibold text-white">{activeSectionMeta.title}</h2>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">{activeSectionMeta.description}</p>
+    <section className="flex min-h-0 flex-col gap-4 overflow-hidden">
+      <div className="glass-panel rounded-[32px] p-5">
+        <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs uppercase tracking-[0.32em] text-sky-200/75">{activeSectionMeta.eyebrow}</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-[-0.03em] text-white">{activeSectionMeta.title}</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{activeSectionMeta.description}</p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 2xl:min-w-[360px]">
+            <span className="rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-xs text-slate-300">
               {isStreaming ? 'Streaming' : 'Idle'}
             </span>
-            <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-3 py-1 text-xs text-violet-100">
+            <span className="rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-xs text-slate-300">
               {workspaceTasks.length} tasks
             </span>
-            <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs text-emerald-200">
-              {toolSummary.running} tools running
+            <span className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 px-3 py-2 text-xs text-emerald-100">
+              {toolSummary.running} tools
             </span>
-            <span className="rounded-full border border-rose-400/20 bg-rose-400/10 px-3 py-1 text-xs text-rose-200">
+            <span className="rounded-2xl border border-rose-300/20 bg-rose-300/10 px-3 py-2 text-xs text-rose-100">
               {toolSummary.failed} failed
             </span>
-            <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-xs text-amber-100">
-              {unreadAutomationCount} automation alerts
+            <span className="rounded-2xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs text-amber-100">
+              {unreadAutomationCount} alerts
             </span>
-            <span className="rounded-full border border-amber-100/20 bg-amber-100/10 px-3 py-1 text-xs text-amber-50">
+            <span className="rounded-2xl border border-sky-300/20 bg-sky-300/10 px-3 py-2 text-xs text-sky-100">
               {pendingToolApprovals.length} approvals
             </span>
           </div>
         </div>
       </div>
 
-      {renderWorkspaceBody()}
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">{renderWorkspaceBody()}</div>
     </section>
   );
 };
