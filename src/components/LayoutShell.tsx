@@ -41,7 +41,7 @@ export const LayoutShell = () => {
         <main
           className={`grid min-h-0 gap-4 ${
             workspaceSection === 'chat'
-              ? 'xl:grid-cols-[286px_minmax(430px,0.82fr)_minmax(520px,1.18fr)]'
+              ? 'xl:grid-cols-[286px_minmax(560px,0.95fr)_minmax(460px,1.05fr)]'
               : 'xl:grid-cols-[286px_minmax(680px,1fr)_minmax(380px,0.52fr)]'
           }`}
         >

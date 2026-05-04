@@ -41,7 +41,7 @@ export const TaskSwitcher = () => {
             type="button"
             onClick={() => setActiveTaskId(task.id)}
             className={cn(
-              'min-w-[180px] rounded-2xl border px-3 py-3 text-left transition',
+              'min-w-[168px] rounded-2xl border px-3 py-2.5 text-left transition',
               activeTaskId === task.id
                 ? 'border-sky-300/25 bg-sky-300/10 shadow-glow'
                 : 'border-white/10 bg-white/[0.035] hover:bg-white/[0.06]',
@@ -62,7 +62,7 @@ export const TaskSwitcher = () => {
       </div>
 
       {activeTask ? (
-        <div className="mt-3 grid gap-2 rounded-2xl border border-white/10 bg-black/15 p-3 xl:grid-cols-[1fr_auto_auto] xl:items-center">
+        <div className="mt-2 grid gap-2 rounded-2xl border border-white/10 bg-black/15 p-2.5 xl:grid-cols-[1fr_auto_auto] xl:items-center">
           <input
             type="text"
             value={activeTask.liveWorkingDirectory ?? ''}

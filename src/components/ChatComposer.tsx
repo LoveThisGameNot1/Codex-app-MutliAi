@@ -38,7 +38,7 @@ export const ChatComposer = () => {
   );
 
   return (
-    <div className="glass-panel-strong rounded-[30px] p-4">
+    <div className="glass-panel-strong rounded-[30px] p-3">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.18em]">
           <span
@@ -78,12 +78,12 @@ export const ChatComposer = () => {
               }
             }
           }}
-          rows={4}
+          rows={3}
           placeholder={placeholder}
-          className="min-h-[118px] w-full resize-none border-0 bg-transparent px-4 py-4 text-sm leading-6 text-slate-100 outline-none placeholder:text-slate-500"
+          className="min-h-[92px] w-full resize-none border-0 bg-transparent px-4 py-3 text-sm leading-6 text-slate-100 outline-none placeholder:text-slate-500"
         />
 
-        <div className="flex flex-col gap-3 border-t border-white/10 bg-white/[0.025] px-3 py-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-col gap-3 border-t border-white/10 bg-white/[0.025] px-3 py-2.5 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0 text-xs text-muted">
             <span className="text-slate-300">{activeTask?.isolationMode === 'safe-clone' ? 'Safe clone' : 'Live workspace'}</span>
             {' '}in{' '}

@@ -124,9 +124,9 @@ export const ChatPanel = () => {
 
   const renderChatTimeline = () => (
     <>
-      <div className="grid gap-3 2xl:grid-cols-[minmax(0,1fr)_220px]">
+      <div className="grid gap-3">
         <TaskSwitcher />
-        <div className="space-y-3">
+        <div className="grid gap-3 xl:grid-cols-2">
           <ApprovalCenter />
           <AutomationInbox />
         </div>
@@ -228,15 +228,15 @@ export const ChatPanel = () => {
 
   return (
     <section className="flex min-h-0 flex-col gap-4 overflow-hidden">
-      <div className="glass-panel rounded-[32px] p-5">
-        <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
-          <div className="min-w-0">
-            <p className="text-xs uppercase tracking-[0.32em] text-sky-200/75">{activeSectionMeta.eyebrow}</p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-[-0.03em] text-white">{activeSectionMeta.title}</h2>
+      <div className="glass-panel rounded-[32px] p-4">
+        <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
+          <div className="min-w-0 2xl:max-w-[58%]">
+            <p className="text-xs uppercase tracking-[0.28em] text-sky-200/75">{activeSectionMeta.eyebrow}</p>
+            <h2 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-white sm:text-3xl">{activeSectionMeta.title}</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{activeSectionMeta.description}</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 2xl:min-w-[360px]">
+          <div className="grid grid-cols-3 gap-2 2xl:w-[360px]">
             <span className="rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-xs text-slate-300">
               {isStreaming ? 'Streaming' : 'Idle'}
             </span>
