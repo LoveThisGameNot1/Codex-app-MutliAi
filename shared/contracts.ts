@@ -507,12 +507,20 @@ export type PersistedSessionSummary = {
   updatedAt: string;
   messageCount: number;
   resumeSummary?: string;
+  providerId?: string;
+  providerLabel?: string;
+  model?: string;
+  toolNames: string[];
+  artifactTypes: ArtifactKind[];
 };
 
 export type PersistedSessionPayload = {
   id: string;
   prompt: string;
   updatedAt: string;
+  providerId?: string;
+  providerLabel?: string;
+  model?: string;
   messages: Array<{
     role: 'developer' | 'system' | 'user' | 'assistant' | 'tool';
     content: string | Array<{ type: 'text'; text: string }>;

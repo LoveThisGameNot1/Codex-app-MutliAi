@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { buildSessionResumeSummary, type SummaryChatMessage } from '../shared/change-summary';
-import type { PersistedSessionSummary } from '../shared/contracts';
+import type { ArtifactKind, PersistedSessionSummary } from '../shared/contracts';
 
 const MAX_SESSIONS = 40;
 const SUMMARY_TITLE_LIMIT = 80;
@@ -13,10 +13,37 @@ export type PersistedSession = {
   prompt: string;
   messages: ChatCompletionMessageParam[];
   updatedAt: string;
+  providerId?: string;
+  providerLabel?: string;
+  model?: string;
 };
 
 const sortSessions = (sessions: PersistedSession[]): PersistedSession[] =>
   [...sessions].sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime());
+
+const optionalString = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
+
+const normalizeSession = (item: unknown): PersistedSession | null => {
+  const candidate = item as Partial<PersistedSession> | null | undefined;
+  if (
+    typeof candidate?.id !== 'string' ||
+    typeof candidate.prompt !== 'string' ||
+    !Array.isArray(candidate.messages) ||
+    typeof candidate.updatedAt !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    id: candidate.id,
+    prompt: candidate.prompt,
+    messages: candidate.messages,
+    updatedAt: candidate.updatedAt,
+    providerId: optionalString(candidate.providerId),
+    providerLabel: optionalString(candidate.providerLabel),
+    model: optionalString(candidate.model),
+  };
+};
 
 const collapseWhitespace = (input: string): string => input.replace(/\s+/g, ' ').trim();
 
@@ -50,6 +77,51 @@ const stringifyContent = (content: ChatCompletionMessageParam['content']): strin
 
 const summarizeMessage = (message: ChatCompletionMessageParam | undefined): string =>
   message ? collapseWhitespace(stringifyContent(message.content)) : '';
+
+const artifactTypeValues: ArtifactKind[] = ['code', 'html', 'react'];
+
+const extractArtifactTypes = (messages: ChatCompletionMessageParam[]): ArtifactKind[] => {
+  const types = new Set<ArtifactKind>();
+
+  for (const message of messages) {
+    if (message.role !== 'assistant') {
+      continue;
+    }
+
+    const content = stringifyContent(message.content);
+    for (const match of content.matchAll(/<artifact\b[^>]*\btype=["']([^"']+)["'][^>]*>/gi)) {
+      const type = match[1]?.trim().toLowerCase();
+      if (artifactTypeValues.includes(type as ArtifactKind)) {
+        types.add(type as ArtifactKind);
+      }
+    }
+  }
+
+  return [...types].sort();
+};
+
+const extractToolNames = (messages: ChatCompletionMessageParam[]): string[] => {
+  const names = new Set<string>();
+
+  for (const message of messages) {
+    if (message.role !== 'tool') {
+      continue;
+    }
+
+    const toolCallId = (message as { tool_call_id?: unknown }).tool_call_id;
+    if (typeof toolCallId === 'string') {
+      const [, toolName] = toolCallId.match(/^[^:]+:([^:]+):/) ?? [];
+      if (toolName) {
+        names.add(toolName);
+        continue;
+      }
+    }
+
+    names.add('tool result');
+  }
+
+  return [...names].sort((left, right) => left.localeCompare(right));
+};
 
 const toSummaryMessages = (messages: ChatCompletionMessageParam[]): SummaryChatMessage[] =>
   messages.flatMap((message) => {
@@ -88,6 +160,11 @@ export const toSessionSummary = (session: PersistedSession): PersistedSessionSum
     preview,
     updatedAt: session.updatedAt,
     messageCount: session.messages.length,
+    providerId: session.providerId,
+    providerLabel: session.providerLabel,
+    model: session.model,
+    toolNames: extractToolNames(session.messages),
+    artifactTypes: extractArtifactTypes(session.messages),
     resumeSummary: buildSessionResumeSummary({
       prompt: session.prompt,
       updatedAt: session.updatedAt,
@@ -111,15 +188,11 @@ export class SessionStore {
         return [];
       }
 
-      return sortSessions(
-        parsed.filter(
-          (item): item is PersistedSession =>
-            typeof item?.id === 'string' &&
-            typeof item?.prompt === 'string' &&
-            Array.isArray(item?.messages) &&
-            typeof item?.updatedAt === 'string',
-        ),
-      ).slice(0, MAX_SESSIONS);
+      const sessions = parsed
+        .map(normalizeSession)
+        .filter((session): session is PersistedSession => Boolean(session));
+
+      return sortSessions(sessions).slice(0, MAX_SESSIONS);
     } catch {
       return [];
     }

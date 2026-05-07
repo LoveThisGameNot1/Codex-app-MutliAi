@@ -24,6 +24,9 @@ describe('SessionStore', () => {
     await store.upsert({
       id: 'session-1',
       prompt: 'system prompt',
+      providerId: 'openai',
+      providerLabel: 'OpenAI',
+      model: 'gpt-5.4',
       messages: [{ role: 'developer', content: 'system prompt' }, { role: 'user', content: 'Hello' }],
       updatedAt: '2026-04-19T12:00:00.000Z',
     });
@@ -31,6 +34,9 @@ describe('SessionStore', () => {
     const loaded = await store.loadAll();
     expect(loaded).toHaveLength(1);
     expect(loaded[0]?.id).toBe('session-1');
+    expect(loaded[0]?.providerId).toBe('openai');
+    expect(loaded[0]?.providerLabel).toBe('OpenAI');
+    expect(loaded[0]?.model).toBe('gpt-5.4');
     expect(loaded[0]?.messages).toHaveLength(2);
   });
 
@@ -94,6 +100,37 @@ describe('SessionStore', () => {
     expect(summary.messageCount).toBe(3);
     expect(summary.resumeSummary).toContain('Latest user: Build a responsive dashboard');
     expect(summary.resumeSummary).toContain('Latest assistant: Here is the dashboard artifact');
+  });
+
+  it('adds searchable provider, model, tool, and artifact metadata to summaries', () => {
+    const summary = toSessionSummary({
+      id: 'session-3',
+      prompt: 'system prompt fallback',
+      updatedAt: '2026-04-19T12:00:00.000Z',
+      providerId: 'anthropic',
+      providerLabel: 'Anthropic',
+      model: 'claude-sonnet-4-5',
+      messages: [
+        { role: 'developer', content: 'system prompt fallback' },
+        { role: 'user', content: 'Create a UI and write it to disk.' },
+        {
+          role: 'assistant',
+          content:
+            'I will write it.<artifact type="react" title="Panel" language="tsx">export const Panel = () => null;</artifact><artifact type="html" title="Preview" language="html"><div>Preview</div></artifact>',
+        },
+        {
+          role: 'tool',
+          tool_call_id: 'request-1:write_file:call-1',
+          content: 'Wrote src/Panel.tsx',
+        },
+      ],
+    });
+
+    expect(summary.providerId).toBe('anthropic');
+    expect(summary.providerLabel).toBe('Anthropic');
+    expect(summary.model).toBe('claude-sonnet-4-5');
+    expect(summary.toolNames).toEqual(['write_file']);
+    expect(summary.artifactTypes).toEqual(['html', 'react']);
   });
 
   it('falls back to the persisted prompt when no user message exists', () => {

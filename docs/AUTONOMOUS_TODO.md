@@ -101,7 +101,7 @@ Why this matters:
 - [x] Add project memory distinct from chat history.
 - [x] Add reusable instructions per workspace.
 - [x] Add “what changed since last run” summaries for automations and resumed sessions.
-- [ ] Add searchable session history with filters by model, provider, tool use, and artifact type.
+- [x] Add searchable session history with filters by model, provider, tool use, and artifact type.
 - [ ] Add export/import for sessions and memory.
 
 Why this matters:

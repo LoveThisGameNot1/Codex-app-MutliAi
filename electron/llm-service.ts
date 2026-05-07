@@ -66,6 +66,9 @@ type EmitEvent = (event: ChatStreamEvent) => void;
 type Session = {
   messages: ChatCompletionMessageParam[];
   prompt: string;
+  providerId?: string;
+  providerLabel?: string;
+  model?: string;
 };
 
 type AutomationTooling = {
@@ -502,6 +505,9 @@ export class LlmService {
     const prompt = await this.buildRunPrompt(config);
     const session: Session = {
       prompt,
+      providerId: config.providerId,
+      providerLabel: getProviderPreset(config.providerId).label,
+      model: config.model,
       messages: [
         {
           role: 'developer',
@@ -545,6 +551,7 @@ export class LlmService {
     const hookedPrompt = await this.applyPromptHooks(request, basePrompt, effectiveWorkingDirectory, emitEvent);
     const prompt = hookedPrompt.systemPrompt;
     const session = this.ensureSession(sessionId, prompt);
+    this.updateSessionMetadata(session, config);
 
     session.messages.push({
       role: 'user',
@@ -692,6 +699,7 @@ export class LlmService {
     const hookedPrompt = await this.applyPromptHooks(request, basePrompt, effectiveWorkingDirectory, emitEvent);
     const prompt = hookedPrompt.systemPrompt;
     const session = this.ensureSession(sessionId, prompt);
+    this.updateSessionMetadata(session, config);
     session.messages.push({
       role: 'user',
       content: hookedPrompt.message,
@@ -906,6 +914,7 @@ export class LlmService {
     const hookedPrompt = await this.applyPromptHooks(request, basePrompt, effectiveWorkingDirectory, emitEvent);
     const prompt = hookedPrompt.systemPrompt;
     const session = this.ensureSession(sessionId, prompt);
+    this.updateSessionMetadata(session, config);
     session.messages.push({
       role: 'user',
       content: hookedPrompt.message,
@@ -1568,8 +1577,18 @@ export class LlmService {
       this.sessions.set(session.id, {
         prompt: session.prompt,
         messages: session.messages,
+        providerId: session.providerId,
+        providerLabel: session.providerLabel,
+        model: session.model,
       });
     }
+  }
+
+  private updateSessionMetadata(session: Session, config: AppConfig): void {
+    const provider = getProviderPreset(config.providerId);
+    session.providerId = provider.id;
+    session.providerLabel = provider.label;
+    session.model = config.model;
   }
 
   private async persistSession(sessionId: string, session: Session): Promise<void> {
@@ -1578,6 +1597,9 @@ export class LlmService {
       prompt: session.prompt,
       messages: session.messages,
       updatedAt: nowIso(),
+      providerId: session.providerId,
+      providerLabel: session.providerLabel,
+      model: session.model,
     });
   }
 

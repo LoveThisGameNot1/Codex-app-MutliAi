@@ -27,6 +27,7 @@ The session summary includes:
 - latest assistant reply
 - latest tool result when available
 - captured artifact count when available
+- provider, model, tool-use, and artifact-type metadata for filtered search
 
 ## Design Notes
 

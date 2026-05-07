@@ -8,6 +8,7 @@ An Electron desktop app in the style of Cursor or Claude Artifacts, featuring:
 - Monaco code view for artifacts
 - Sandboxed HTML/React preview in the right panel
 - Persistent chat and artifact history across app restarts
+- Searchable session history with provider, model, tool-use, and artifact-type filters
 - Parser unit tests with Vitest
 
 Current presets are available for:
@@ -53,7 +54,8 @@ For many compatible providers, the app can also load the currently available mod
 6. Review any filesystem or terminal activity in the chat timeline and tool status surfaces.
 7. If a tool action requires approval, use the Approval Center to approve once, approve for the current run, or reject it.
 8. Create automations in the settings area when you want recurring runs, scheduled checks, or follow-up work.
-9. Use the session library to reload previous conversations and continue from persisted context.
+9. Use the Search panel to filter saved sessions by provider, model, tool usage, or artifact type.
+10. Load a previous session from the search results to continue from persisted context.
 
 ### Example Flow
 
