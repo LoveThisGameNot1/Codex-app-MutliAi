@@ -102,7 +102,7 @@ Why this matters:
 - [x] Add reusable instructions per workspace.
 - [x] Add “what changed since last run” summaries for automations and resumed sessions.
 - [x] Add searchable session history with filters by model, provider, tool use, and artifact type.
-- [ ] Add export/import for sessions and memory.
+- [x] Add export/import for sessions and memory.
 
 Why this matters:
 - This improves continuity and makes automations smarter over time.

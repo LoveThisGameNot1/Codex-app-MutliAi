@@ -10,6 +10,9 @@ import type {
   CaptureArtifactPreviewInput,
   CheckMcpConnectorInput,
   ChatStreamEvent,
+  ContinuityExportResult,
+  ContinuityImportInput,
+  ContinuityImportResult,
   CreateProjectMemoryInput,
   CreateSafeTaskCloneInput,
   CreateAutomationInput,
@@ -66,6 +69,9 @@ const desktopApi: DesktopApi = {
   loadSession: (sessionId: string): Promise<PersistedSessionPayload | null> =>
     ipcRenderer.invoke('sessions:load', sessionId),
   deleteSession: (sessionId: string): Promise<void> => ipcRenderer.invoke('sessions:delete', sessionId),
+  exportContinuityData: (): Promise<ContinuityExportResult | null> => ipcRenderer.invoke('continuity:export'),
+  importContinuityData: (input: ContinuityImportInput): Promise<ContinuityImportResult | null> =>
+    ipcRenderer.invoke('continuity:import', input),
   listAutomations: (): Promise<AutomationRecord[]> => ipcRenderer.invoke('automations:list'),
   listAutomationRuns: (): Promise<AutomationRunRecord[]> => ipcRenderer.invoke('automation-runs:list'),
   createAutomation: (input: CreateAutomationInput): Promise<AutomationRecord> =>

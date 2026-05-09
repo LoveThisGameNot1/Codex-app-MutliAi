@@ -74,6 +74,78 @@ describe('ProjectMemoryService', () => {
     expect((await right.getSnapshot()).memories).toHaveLength(0);
   });
 
+  it('imports memory snapshots by merging instructions and remapping records to the active workspace', async () => {
+    const service = new ProjectMemoryService(await createTempDir(), 'C:/workspace/app');
+    await service.updateInstructions({ content: 'Local instructions stay available.' });
+
+    const result = await service.importSnapshot(
+      {
+        workspaceRoot: 'D:/old-workspace',
+        instructions: {
+          workspaceRoot: 'D:/old-workspace',
+          content: 'Imported instructions should be appended.',
+          updatedAt: '2026-04-19T12:00:00.000Z',
+        },
+        memories: [
+          {
+            id: 'memory-1',
+            workspaceRoot: 'D:/old-workspace',
+            title: 'Imported architecture note',
+            content: 'Renderer state is hydrated after continuity import.',
+            tags: ['Architecture', 'Import'],
+            createdAt: '2026-04-19T12:00:00.000Z',
+            updatedAt: '2026-04-19T12:00:00.000Z',
+          },
+        ],
+      },
+      'merge',
+    );
+
+    const snapshot = await service.getSnapshot();
+    expect(result.importedMemories).toBe(1);
+    expect(result.instructionsUpdated).toBe(true);
+    expect(snapshot.instructions.content).toContain('Local instructions stay available.');
+    expect(snapshot.instructions.content).toContain('Imported instructions should be appended.');
+    expect(snapshot.memories).toHaveLength(1);
+    expect(snapshot.memories[0]?.workspaceRoot).toBe(snapshot.workspaceRoot);
+    expect(snapshot.memories[0]?.tags).toEqual(['architecture', 'import']);
+  });
+
+  it('can replace memory for the active workspace from an import snapshot', async () => {
+    const service = new ProjectMemoryService(await createTempDir(), 'C:/workspace/app');
+    await service.updateInstructions({ content: 'Old instructions' });
+    await service.createMemory({ title: 'Old memory', content: 'Old content' });
+
+    const result = await service.importSnapshot(
+      {
+        workspaceRoot: 'D:/old-workspace',
+        instructions: {
+          workspaceRoot: 'D:/old-workspace',
+          content: 'Replacement instructions',
+          updatedAt: '2026-04-19T12:00:00.000Z',
+        },
+        memories: [
+          {
+            id: 'memory-2',
+            workspaceRoot: 'D:/old-workspace',
+            title: 'Replacement memory',
+            content: 'Replacement content',
+            tags: [],
+            createdAt: '2026-04-20T12:00:00.000Z',
+            updatedAt: '2026-04-20T12:00:00.000Z',
+          },
+        ],
+      },
+      'replace',
+    );
+
+    const snapshot = await service.getSnapshot();
+    expect(result.importedMemories).toBe(1);
+    expect(result.totalMemories).toBe(1);
+    expect(snapshot.instructions.content).toBe('Replacement instructions');
+    expect(snapshot.memories.map((memory) => memory.title)).toEqual(['Replacement memory']);
+  });
+
   it('rejects empty memory records', async () => {
     const service = new ProjectMemoryService(await createTempDir(), 'C:/workspace/app');
 

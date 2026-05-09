@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { buildSessionResumeSummary, type SummaryChatMessage } from '../shared/change-summary';
-import type { ArtifactKind, PersistedSessionSummary } from '../shared/contracts';
+import type { ArtifactKind, ContinuityImportMode, PersistedSessionSummary } from '../shared/contracts';
 
 const MAX_SESSIONS = 40;
 const SUMMARY_TITLE_LIMIT = 80;
@@ -16,6 +16,12 @@ export type PersistedSession = {
   providerId?: string;
   providerLabel?: string;
   model?: string;
+};
+
+export type SessionImportResult = {
+  importedSessions: number;
+  skippedSessions: number;
+  totalSessions: number;
 };
 
 const sortSessions = (sessions: PersistedSession[]): PersistedSession[] =>
@@ -219,6 +225,47 @@ export class SessionStore {
   public async delete(sessionId: string): Promise<void> {
     const sessions = await this.loadAll();
     await this.writeAll(sessions.filter((session) => session.id !== sessionId));
+  }
+
+  public async importSessions(rawSessions: unknown[], mode: ContinuityImportMode): Promise<SessionImportResult> {
+    const incoming = rawSessions
+      .map(normalizeSession)
+      .filter((session): session is PersistedSession => Boolean(session));
+    let skippedSessions = rawSessions.length - incoming.length;
+
+    if (mode === 'replace') {
+      const next = sortSessions(incoming).slice(0, MAX_SESSIONS);
+      skippedSessions += incoming.length - next.length;
+      await this.writeAll(next);
+      return {
+        importedSessions: next.length,
+        skippedSessions,
+        totalSessions: next.length,
+      };
+    }
+
+    const mergedById = new Map((await this.loadAll()).map((session) => [session.id, session]));
+    let importedSessions = 0;
+
+    for (const session of incoming) {
+      const current = mergedById.get(session.id);
+      if (current && new Date(current.updatedAt).getTime() >= new Date(session.updatedAt).getTime()) {
+        skippedSessions += 1;
+        continue;
+      }
+
+      mergedById.set(session.id, session);
+      importedSessions += 1;
+    }
+
+    const next = sortSessions([...mergedById.values()]).slice(0, MAX_SESSIONS);
+    await this.writeAll(next);
+
+    return {
+      importedSessions,
+      skippedSessions,
+      totalSessions: next.length,
+    };
   }
 
   private async writeAll(sessions: PersistedSession[]): Promise<void> {

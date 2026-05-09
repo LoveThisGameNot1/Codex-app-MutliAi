@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ProjectMemoryRecord } from '../../shared/contracts';
+import type { ContinuityImportMode, ContinuityImportResult, ProjectMemoryRecord } from '../../shared/contracts';
+import { continuityRuntime } from '@/services/continuity-runtime';
 import { projectMemoryRuntime } from '@/services/project-memory-runtime';
 import { useAppStore } from '@/store/app-store';
 
@@ -11,6 +12,11 @@ const parseTags = (value: string): string[] =>
 
 const formatTimestamp = (value: string | undefined): string =>
   value ? new Date(value).toLocaleString() : 'Not saved yet';
+
+const formatImportSummary = (result: ContinuityImportResult): string =>
+  `Imported ${result.importedSessions} sessions and ${result.importedMemories} memory entries. Skipped ${result.skippedSessions} sessions and ${result.skippedMemories} memory entries. Instructions ${
+    result.instructionsUpdated ? 'were updated' : 'were unchanged'
+  }.`;
 
 export const MemoryPanel = () => {
   const appInfo = useAppStore((state) => state.appInfo);
@@ -26,6 +32,7 @@ export const MemoryPanel = () => {
   const [editTags, setEditTags] = useState('');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [continuityBusy, setContinuityBusy] = useState(false);
   const workspaceRoot = appInfo?.workspaceRoot ?? workspaceInstructions?.workspaceRoot ?? 'Current workspace';
 
   useEffect(() => {
@@ -123,6 +130,53 @@ export const MemoryPanel = () => {
     }
   };
 
+  const exportContinuity = async (): Promise<void> => {
+    setStatusMessage(null);
+    setErrorMessage(null);
+    setContinuityBusy(true);
+    try {
+      const result = await continuityRuntime.exportData();
+      if (!result) {
+        setStatusMessage('Export cancelled.');
+        return;
+      }
+
+      setStatusMessage(
+        `Exported ${result.sessionCount} sessions and ${result.memoryCount} memory entries to ${result.path}.`,
+      );
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to export sessions and memory.');
+    } finally {
+      setContinuityBusy(false);
+    }
+  };
+
+  const importContinuity = async (mode: ContinuityImportMode): Promise<void> => {
+    if (
+      mode === 'replace' &&
+      !window.confirm('Replace local sessions and this workspace memory with the selected backup? This cannot be undone.')
+    ) {
+      return;
+    }
+
+    setStatusMessage(null);
+    setErrorMessage(null);
+    setContinuityBusy(true);
+    try {
+      const result = await continuityRuntime.importData({ mode });
+      if (!result) {
+        setStatusMessage('Import cancelled.');
+        return;
+      }
+
+      setStatusMessage(formatImportSummary(result));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to import sessions and memory.');
+    } finally {
+      setContinuityBusy(false);
+    }
+  };
+
   return (
     <section className="rounded-[28px] border border-white/10 bg-slate-900/80 p-5 shadow-panel backdrop-blur">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -144,6 +198,44 @@ export const MemoryPanel = () => {
 
       <div className="mt-4 rounded-2xl border border-sky-300/15 bg-sky-300/5 px-4 py-3 text-xs text-slate-400">
         Workspace root: <span className="text-sky-100">{workspaceRoot}</span>
+      </div>
+
+      <div className="mt-4 rounded-3xl border border-white/10 bg-slate-950/60 p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Continuity Backup</p>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+              Export saved sessions, workspace instructions, and project memory into one JSON file. Import can merge
+              with local data or replace it when moving to a clean setup.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={continuityBusy}
+              onClick={() => void exportContinuity()}
+              className="rounded-full border border-sky-400/30 bg-sky-400/10 px-4 py-2 text-sm text-sky-100 transition hover:bg-sky-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Export JSON
+            </button>
+            <button
+              type="button"
+              disabled={continuityBusy}
+              onClick={() => void importContinuity('merge')}
+              className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-4 py-2 text-sm text-emerald-100 transition hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Import Merge
+            </button>
+            <button
+              type="button"
+              disabled={continuityBusy}
+              onClick={() => void importContinuity('replace')}
+              className="rounded-full border border-amber-400/30 bg-amber-400/10 px-4 py-2 text-sm text-amber-100 transition hover:bg-amber-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Import Replace
+            </button>
+          </div>
+        </div>
       </div>
 
       {statusMessage ? (

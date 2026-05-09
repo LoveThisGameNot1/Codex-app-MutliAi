@@ -9,6 +9,7 @@ An Electron desktop app in the style of Cursor or Claude Artifacts, featuring:
 - Sandboxed HTML/React preview in the right panel
 - Persistent chat and artifact history across app restarts
 - Searchable session history with provider, model, tool-use, and artifact-type filters
+- Portable JSON export/import for saved sessions and project memory
 - Parser unit tests with Vitest
 
 Current presets are available for:
@@ -56,6 +57,7 @@ For many compatible providers, the app can also load the currently available mod
 8. Create automations in the settings area when you want recurring runs, scheduled checks, or follow-up work.
 9. Use the Search panel to filter saved sessions by provider, model, tool usage, or artifact type.
 10. Load a previous session from the search results to continue from persisted context.
+11. Use `Memory -> Continuity Backup` to export or import saved sessions and project memory as JSON.
 
 ### Example Flow
 

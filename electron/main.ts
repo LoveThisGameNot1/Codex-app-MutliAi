@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions, type SaveDialogOptions } from 'electron';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -9,11 +10,14 @@ import {
   CancelChatRequest,
   CheckMcpConnectorInput,
   ChatStreamEvent,
+  ContinuityExportPayload,
+  ContinuityImportInput,
   GitCreateBranchInput,
   GitCreateCommitInput,
   ResolveToolApprovalInput,
   ResetChatRequest,
   StartChatRequest,
+  PersistedSessionPayload,
   UpdateAutomationInput,
   UpdateProjectMemoryInput,
   UpdateWorkspaceInstructionsInput,
@@ -70,6 +74,67 @@ llmService.setAutomationTooling({
   runAutomation: (automationId) => automationService.runAutomationNow(automationId),
 });
 let mainWindow: BrowserWindow | null = null;
+
+const nowIso = (): string => new Date().toISOString();
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const isContinuityExportPayload = (value: unknown): value is ContinuityExportPayload =>
+  isRecord(value) &&
+  value.format === 'codexapp-continuity-export' &&
+  value.version === 1 &&
+  Array.isArray(value.sessions) &&
+  isRecord(value.memory);
+
+const createContinuityExportFilename = (): string =>
+  `codexapp-continuity-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+
+const isPersistedMessageRole = (
+  role: unknown,
+): role is PersistedSessionPayload['messages'][number]['role'] =>
+  role === 'developer' || role === 'system' || role === 'user' || role === 'assistant' || role === 'tool';
+
+const toExportContent = (content: unknown): PersistedSessionPayload['messages'][number]['content'] => {
+  if (typeof content === 'string') {
+    return content;
+  }
+
+  if (!Array.isArray(content)) {
+    return '';
+  }
+
+  return content.flatMap((item) => {
+    if (isRecord(item) && item.type === 'text' && typeof item.text === 'string') {
+      return [{ type: 'text' as const, text: item.text }];
+    }
+
+    return [];
+  });
+};
+
+const toPersistedSessionPayload = (session: Awaited<ReturnType<typeof sessionStore.loadAll>>[number]): PersistedSessionPayload => ({
+  id: session.id,
+  prompt: session.prompt,
+  updatedAt: session.updatedAt,
+  providerId: session.providerId,
+  providerLabel: session.providerLabel,
+  model: session.model,
+  messages: session.messages.flatMap((message) => {
+    if (!isPersistedMessageRole(message.role)) {
+      return [];
+    }
+
+    const toolCallId = (message as { tool_call_id?: unknown }).tool_call_id;
+    return [
+      {
+        role: message.role,
+        tool_call_id: typeof toolCallId === 'string' ? toolCallId : undefined,
+        content: toExportContent(message.content),
+      },
+    ];
+  }),
+});
 
 const createWindow = async (): Promise<void> => {
   mainWindow = new BrowserWindow({
@@ -136,6 +201,79 @@ const registerIpcHandlers = (): void => {
   ipcMain.handle('sessions:load', async (_event, sessionId: string) => sessionStore.load(sessionId));
   ipcMain.handle('sessions:delete', async (_event, sessionId: string) => {
     await llmService.deleteSession(sessionId);
+  });
+  ipcMain.handle('continuity:export', async () => {
+    const sessions = await sessionStore.loadAll();
+    const memory = await projectMemoryService.getSnapshot();
+    const exportedAt = nowIso();
+    const saveOptions: SaveDialogOptions = {
+      title: 'Export sessions and memory',
+      defaultPath: createContinuityExportFilename(),
+      filters: [{ name: 'CodexApp continuity backup', extensions: ['json'] }],
+    };
+    const saveResult = mainWindow
+      ? await dialog.showSaveDialog(mainWindow, saveOptions)
+      : await dialog.showSaveDialog(saveOptions);
+
+    if (saveResult.canceled || !saveResult.filePath) {
+      return null;
+    }
+
+    const payload: ContinuityExportPayload = {
+      format: 'codexapp-continuity-export',
+      version: 1,
+      exportedAt,
+      workspaceRoot,
+      app: {
+        name: app.getName(),
+        version: app.getVersion(),
+      },
+      sessions: sessions.map(toPersistedSessionPayload),
+      memory,
+    };
+
+    await fs.writeFile(saveResult.filePath, JSON.stringify(payload, null, 2), 'utf8');
+    return {
+      path: saveResult.filePath,
+      exportedAt,
+      sessionCount: sessions.length,
+      memoryCount: memory.memories.length,
+      instructionsIncluded: Boolean(memory.instructions.content.trim()),
+    };
+  });
+  ipcMain.handle('continuity:import', async (_event, input: ContinuityImportInput) => {
+    const mode = input?.mode === 'replace' ? 'replace' : 'merge';
+    const openOptions: OpenDialogOptions = {
+      title: 'Import sessions and memory',
+      properties: ['openFile'],
+      filters: [{ name: 'CodexApp continuity backup', extensions: ['json'] }],
+    };
+    const openResult = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, openOptions)
+      : await dialog.showOpenDialog(openOptions);
+
+    if (openResult.canceled || openResult.filePaths.length === 0) {
+      return null;
+    }
+
+    const filePath = openResult.filePaths[0];
+    if (!filePath) {
+      return null;
+    }
+    const parsed = JSON.parse(await fs.readFile(filePath, 'utf8')) as unknown;
+    if (!isContinuityExportPayload(parsed)) {
+      throw new Error('Selected file is not a valid CodexApp continuity export.');
+    }
+
+    const sessionResult = await sessionStore.importSessions(parsed.sessions, mode);
+    const memoryResult = await projectMemoryService.importSnapshot(parsed.memory, mode);
+    return {
+      path: filePath,
+      mode,
+      importedAt: nowIso(),
+      ...sessionResult,
+      ...memoryResult,
+    };
   });
   ipcMain.handle('automations:list', () => automationService.listAutomations());
   ipcMain.handle('automation-runs:list', () => automationService.listRuns());

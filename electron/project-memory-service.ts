@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type {
+  ContinuityImportMode,
   CreateProjectMemoryInput,
   ProjectMemoryRecord,
   ProjectMemorySnapshot,
@@ -22,6 +23,13 @@ type WorkspaceMemoryState = {
 type ProjectMemoryState = {
   version: 1;
   workspaces: Record<string, WorkspaceMemoryState>;
+};
+
+export type ProjectMemoryImportResult = {
+  importedMemories: number;
+  skippedMemories: number;
+  totalMemories: number;
+  instructionsUpdated: boolean;
 };
 
 const nowIso = (): string => new Date().toISOString();
@@ -56,6 +64,48 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const sortMemories = (memories: ProjectMemoryRecord[]): ProjectMemoryRecord[] =>
   [...memories].sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime());
+
+const optionalTimestamp = (value: unknown): string => (typeof value === 'string' ? value : nowIso());
+
+const normalizeImportedMemory = (value: unknown, workspaceRoot: string): ProjectMemoryRecord | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = typeof value.id === 'string' ? value.id.trim() : '';
+  const title = typeof value.title === 'string' ? clampText(value.title, 160) : '';
+  const content = typeof value.content === 'string' ? clampText(value.content, MAX_MEMORY_CONTENT_LENGTH) : '';
+  if (!id || !title || !content) {
+    return null;
+  }
+
+  return {
+    id,
+    workspaceRoot,
+    title,
+    content,
+    tags: Array.isArray(value.tags) ? normalizeTags(value.tags.filter((tag): tag is string => typeof tag === 'string')) : [],
+    createdAt: optionalTimestamp(value.createdAt),
+    updatedAt: optionalTimestamp(value.updatedAt),
+  };
+};
+
+const mergeInstructionContent = (current: string, incoming: string, sourceWorkspaceRoot: string): string => {
+  const currentContent = clampText(current, MAX_INSTRUCTIONS_LENGTH);
+  const incomingContent = clampText(incoming, MAX_INSTRUCTIONS_LENGTH);
+  if (!incomingContent || currentContent.includes(incomingContent)) {
+    return currentContent;
+  }
+
+  if (!currentContent) {
+    return incomingContent;
+  }
+
+  return clampText(
+    `${currentContent}\n\n--- Imported instructions from ${sourceWorkspaceRoot || 'another workspace'} ---\n${incomingContent}`,
+    MAX_INSTRUCTIONS_LENGTH,
+  );
+};
 
 export class ProjectMemoryService {
   private readonly filePath: string;
@@ -154,6 +204,75 @@ export class ProjectMemoryService {
     };
     await this.writeState(state);
     return workspace.instructions;
+  }
+
+  public async importSnapshot(snapshot: ProjectMemorySnapshot, mode: ContinuityImportMode): Promise<ProjectMemoryImportResult> {
+    const incomingMemories = Array.isArray(snapshot.memories)
+      ? snapshot.memories
+          .map((memory) => normalizeImportedMemory(memory, this.workspaceRoot))
+          .filter((memory): memory is ProjectMemoryRecord => Boolean(memory))
+      : [];
+    let skippedMemories = Math.max(0, (snapshot.memories?.length ?? 0) - incomingMemories.length);
+    const state = await this.loadState();
+    const workspace = this.ensureWorkspace(state);
+    const importedInstructions = typeof snapshot.instructions?.content === 'string' ? snapshot.instructions.content : '';
+    const sourceWorkspaceRoot = typeof snapshot.workspaceRoot === 'string' ? snapshot.workspaceRoot : '';
+    let instructionsUpdated = false;
+
+    if (mode === 'replace') {
+      const nextMemories = sortMemories(incomingMemories).slice(0, MAX_MEMORY_ITEMS_PER_WORKSPACE);
+      skippedMemories += incomingMemories.length - nextMemories.length;
+      workspace.instructions = {
+        workspaceRoot: this.workspaceRoot,
+        content: clampText(importedInstructions, MAX_INSTRUCTIONS_LENGTH),
+        updatedAt: nowIso(),
+      };
+      workspace.memories = nextMemories;
+      instructionsUpdated = true;
+      await this.writeState(state);
+      return {
+        importedMemories: nextMemories.length,
+        skippedMemories,
+        totalMemories: nextMemories.length,
+        instructionsUpdated,
+      };
+    }
+
+    const mergedInstructionContent = mergeInstructionContent(
+      workspace.instructions.content,
+      importedInstructions,
+      sourceWorkspaceRoot,
+    );
+    if (mergedInstructionContent !== workspace.instructions.content) {
+      workspace.instructions = {
+        workspaceRoot: this.workspaceRoot,
+        content: mergedInstructionContent,
+        updatedAt: nowIso(),
+      };
+      instructionsUpdated = true;
+    }
+
+    const memoriesById = new Map(workspace.memories.map((memory) => [memory.id, memory]));
+    let importedMemories = 0;
+    for (const memory of incomingMemories) {
+      const current = memoriesById.get(memory.id);
+      if (current && new Date(current.updatedAt).getTime() >= new Date(memory.updatedAt).getTime()) {
+        skippedMemories += 1;
+        continue;
+      }
+
+      memoriesById.set(memory.id, memory);
+      importedMemories += 1;
+    }
+
+    workspace.memories = sortMemories([...memoriesById.values()]).slice(0, MAX_MEMORY_ITEMS_PER_WORKSPACE);
+    await this.writeState(state);
+    return {
+      importedMemories,
+      skippedMemories,
+      totalMemories: workspace.memories.length,
+      instructionsUpdated,
+    };
   }
 
   private async loadWorkspace(): Promise<WorkspaceMemoryState> {

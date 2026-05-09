@@ -80,6 +80,72 @@ describe('SessionStore', () => {
     expect(loaded).toEqual([]);
   });
 
+  it('imports sessions by merging newer records and skipping stale duplicates', async () => {
+    const baseDir = await createTempDir();
+    const store = new SessionStore(baseDir);
+
+    await store.upsert({
+      id: 'session-1',
+      prompt: 'current prompt',
+      messages: [{ role: 'developer', content: 'current prompt' }],
+      updatedAt: '2026-04-19T12:00:00.000Z',
+    });
+
+    const result = await store.importSessions(
+      [
+        {
+          id: 'session-1',
+          prompt: 'stale prompt',
+          messages: [{ role: 'developer', content: 'stale prompt' }],
+          updatedAt: '2026-04-18T12:00:00.000Z',
+        },
+        {
+          id: 'session-2',
+          prompt: 'imported prompt',
+          messages: [{ role: 'developer', content: 'imported prompt' }],
+          updatedAt: '2026-04-20T12:00:00.000Z',
+        },
+      ],
+      'merge',
+    );
+
+    const loaded = await store.loadAll();
+    expect(result.importedSessions).toBe(1);
+    expect(result.skippedSessions).toBe(1);
+    expect(loaded).toHaveLength(2);
+    expect(loaded.find((session) => session.id === 'session-1')?.prompt).toBe('current prompt');
+    expect(loaded.find((session) => session.id === 'session-2')?.prompt).toBe('imported prompt');
+  });
+
+  it('can replace the stored session library from an import', async () => {
+    const baseDir = await createTempDir();
+    const store = new SessionStore(baseDir);
+
+    await store.upsert({
+      id: 'session-1',
+      prompt: 'old prompt',
+      messages: [{ role: 'developer', content: 'old prompt' }],
+      updatedAt: '2026-04-19T12:00:00.000Z',
+    });
+
+    const result = await store.importSessions(
+      [
+        {
+          id: 'session-2',
+          prompt: 'replacement prompt',
+          messages: [{ role: 'developer', content: 'replacement prompt' }],
+          updatedAt: '2026-04-20T12:00:00.000Z',
+        },
+      ],
+      'replace',
+    );
+
+    const loaded = await store.loadAll();
+    expect(result.importedSessions).toBe(1);
+    expect(result.totalSessions).toBe(1);
+    expect(loaded.map((session) => session.id)).toEqual(['session-2']);
+  });
+
   it('builds user-facing summaries from chat content', () => {
     const summary = toSessionSummary({
       id: 'session-1',

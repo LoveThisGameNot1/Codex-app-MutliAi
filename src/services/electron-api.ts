@@ -10,6 +10,9 @@ import type {
   CaptureArtifactPreviewInput,
   CheckMcpConnectorInput,
   ChatStreamEvent,
+  ContinuityExportResult,
+  ContinuityImportInput,
+  ContinuityImportResult,
   CreateProjectMemoryInput,
   CreateSafeTaskCloneInput,
   CreateAutomationInput,
@@ -88,6 +91,10 @@ export const listSessions = (): Promise<PersistedSessionSummary[]> => requireDes
 export const loadSession = (sessionId: string): Promise<PersistedSessionPayload | null> =>
   requireDesktopApi().loadSession(sessionId);
 export const deleteSession = (sessionId: string): Promise<void> => requireDesktopApi().deleteSession(sessionId);
+export const exportContinuityData = (): Promise<ContinuityExportResult | null> =>
+  requireDesktopApi().exportContinuityData();
+export const importContinuityData = (input: ContinuityImportInput): Promise<ContinuityImportResult | null> =>
+  requireDesktopApi().importContinuityData(input);
 export const listAutomations = (): Promise<AutomationRecord[]> => requireDesktopApi().listAutomations();
 export const listAutomationRuns = (): Promise<AutomationRunRecord[]> => requireDesktopApi().listAutomationRuns();
 export const createAutomation = (input: CreateAutomationInput): Promise<AutomationRecord> =>

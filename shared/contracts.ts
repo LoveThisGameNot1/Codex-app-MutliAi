@@ -523,8 +523,49 @@ export type PersistedSessionPayload = {
   model?: string;
   messages: Array<{
     role: 'developer' | 'system' | 'user' | 'assistant' | 'tool';
+    tool_call_id?: string;
     content: string | Array<{ type: 'text'; text: string }>;
   }>;
+};
+
+export type ContinuityImportMode = 'merge' | 'replace';
+
+export type ContinuityExportPayload = {
+  format: 'codexapp-continuity-export';
+  version: 1;
+  exportedAt: string;
+  workspaceRoot: string;
+  app: {
+    name: string;
+    version: string;
+  };
+  sessions: PersistedSessionPayload[];
+  memory: ProjectMemorySnapshot;
+};
+
+export type ContinuityExportResult = {
+  path: string;
+  exportedAt: string;
+  sessionCount: number;
+  memoryCount: number;
+  instructionsIncluded: boolean;
+};
+
+export type ContinuityImportInput = {
+  mode: ContinuityImportMode;
+};
+
+export type ContinuityImportResult = {
+  path: string;
+  mode: ContinuityImportMode;
+  importedAt: string;
+  importedSessions: number;
+  skippedSessions: number;
+  totalSessions: number;
+  importedMemories: number;
+  skippedMemories: number;
+  totalMemories: number;
+  instructionsUpdated: boolean;
 };
 
 export type AvailableModelRecord = {
@@ -648,6 +689,8 @@ export type DesktopApi = {
   listSessions: () => Promise<PersistedSessionSummary[]>;
   loadSession: (sessionId: string) => Promise<PersistedSessionPayload | null>;
   deleteSession: (sessionId: string) => Promise<void>;
+  exportContinuityData: () => Promise<ContinuityExportResult | null>;
+  importContinuityData: (input: ContinuityImportInput) => Promise<ContinuityImportResult | null>;
   listAutomations: () => Promise<AutomationRecord[]>;
   listAutomationRuns: () => Promise<AutomationRunRecord[]>;
   createAutomation: (input: CreateAutomationInput) => Promise<AutomationRecord>;
