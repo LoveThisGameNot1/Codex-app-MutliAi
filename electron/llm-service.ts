@@ -288,6 +288,35 @@ export class LlmService {
       };
     }
 
+    if (provider.id === 'anthropic' && this.shouldUseNativeAnthropic(config)) {
+      try {
+        const liveModels = await this.listNativeAnthropicModels(config, baseUrl, provider.popularModels);
+        return {
+          providerId: provider.id,
+          providerLabel: provider.label,
+          baseUrl,
+          source: 'live',
+          fetchedAt: nowCatalogIso(),
+          models: liveModels,
+          warning: liveModels.length === 0 ? 'Anthropic returned no available models, so preset suggestions were merged in.' : undefined,
+        };
+      } catch (error) {
+        const messageText = error instanceof Error ? error.message : 'Unknown Anthropic model catalog error';
+        return {
+          providerId: provider.id,
+          providerLabel: provider.label,
+          baseUrl,
+          source: 'preset-fallback',
+          fetchedAt: nowCatalogIso(),
+          warning: `Live Anthropic model discovery failed: ${messageText}`,
+          models: fallbackModels.map((model) => ({
+            ...model,
+            capabilities: inferModelCapabilities(provider.id, model.id, baseUrl),
+          })),
+        };
+      }
+    }
+
     if (provider.id === 'gemini' && this.shouldUseNativeGemini(config)) {
       try {
         const liveModels = await this.listNativeGeminiModels(config, baseUrl, provider.popularModels);
@@ -411,6 +440,38 @@ export class LlmService {
       if (normalized) {
         liveModels.push(normalized);
       }
+    }
+
+    return dedupeAndSortModels(liveModels, fallbackModelIds);
+  }
+
+  private async listNativeAnthropicModels(
+    config: AppConfig,
+    baseUrl: string,
+    fallbackModelIds: string[],
+  ): Promise<AvailableModelRecord[]> {
+    const client = new Anthropic({
+      apiKey: config.apiKey.trim(),
+      baseURL: resolveBaseUrl(config.providerId, config.baseUrl),
+    });
+
+    const liveModels: AvailableModelRecord[] = [];
+    for await (const model of client.models.list({ limit: 100 })) {
+      liveModels.push({
+        id: model.id,
+        ownedBy: 'anthropic',
+        contextWindow: model.max_input_tokens,
+        maxOutputTokens: model.max_tokens,
+        capabilities: inferDiscoveredModelCapabilities('anthropic', model.id, baseUrl, {
+          anthropicCapabilities: {
+            structuredOutputs: Boolean(model.capabilities?.structured_outputs?.supported),
+            codeExecution: Boolean(model.capabilities?.code_execution?.supported),
+            contextManagement: Boolean(model.capabilities?.context_management?.supported),
+            thinking: Boolean(model.capabilities?.thinking?.supported),
+          },
+          sourceLabel: 'Anthropic models.list capabilities',
+        }),
+      });
     }
 
     return dedupeAndSortModels(liveModels, fallbackModelIds);

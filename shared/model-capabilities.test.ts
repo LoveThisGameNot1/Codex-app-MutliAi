@@ -57,4 +57,22 @@ describe('inferModelCapabilities', () => {
     expect(result.toolCalling).toBe('limited');
     expect(result.recommendedForAgent).toBe(false);
   });
+
+  it('uses Anthropic model metadata as native discovery evidence', () => {
+    const result = inferDiscoveredModelCapabilities('anthropic', 'claude-sonnet-4-20250514', 'https://api.anthropic.com/v1/', {
+      anthropicCapabilities: {
+        structuredOutputs: true,
+        codeExecution: true,
+        contextManagement: true,
+        thinking: true,
+      },
+      sourceLabel: 'Anthropic models.list capabilities',
+    });
+
+    expect(result.transport).toBe('native');
+    expect(result.streaming).toBe('supported');
+    expect(result.toolCalling).toBe('supported');
+    expect(result.recommendedForAgent).toBe(true);
+    expect(result.notes.some((note) => note.includes('structured output'))).toBe(true);
+  });
 });

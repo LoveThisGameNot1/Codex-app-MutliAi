@@ -3,8 +3,9 @@ import { AutomationPanel } from '@/components/AutomationPanel';
 import { useAppStore } from '@/store/app-store';
 import { chatRuntime } from '@/services/chat-runtime';
 import { listAvailableModels } from '@/services/electron-api';
-import type { ModelCatalogResult, ToolAccessMode } from '../../shared/contracts';
+import type { ModelCatalogResult, ProviderDiagnosticStatus, ToolAccessMode } from '../../shared/contracts';
 import { inferConfiguredModelCapabilities } from '../../shared/model-capabilities';
+import { buildProviderDiagnostics } from '../../shared/provider-diagnostics';
 import {
   getProviderPreset,
   isApiKeyOptionalForProvider,
@@ -25,6 +26,12 @@ const transportTone = {
   compatible: 'border-sky-300/30 bg-sky-300/10 text-sky-100',
   'gateway-unknown': 'border-amber-300/30 bg-amber-300/10 text-amber-100',
 } as const;
+
+const diagnosticTone: Record<ProviderDiagnosticStatus, string> = {
+  ready: 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100',
+  warning: 'border-amber-300/30 bg-amber-300/10 text-amber-100',
+  blocked: 'border-rose-300/30 bg-rose-300/10 text-rose-100',
+};
 
 const recommendationTone = (recommended: boolean): string =>
   recommended
@@ -87,6 +94,10 @@ export const SettingsPanel = ({ embedded = false }: { embedded?: boolean }) => {
     const discoveredModel = modelCatalog?.models.find((model) => model.id === config.model);
     return discoveredModel?.capabilities ?? inferConfiguredModelCapabilities(config);
   }, [config, modelCatalog]);
+  const providerDiagnostics = useMemo(
+    () => buildProviderDiagnostics(config, selectedModelCapabilities, modelCatalog),
+    [config, modelCatalog, selectedModelCapabilities],
+  );
   const latestModelRequestId = useRef(0);
   const autoRefreshKey = useMemo(
     () => `${config.providerId}::${config.baseUrl.trim()}::${config.apiKey}`,
@@ -273,6 +284,35 @@ export const SettingsPanel = ({ embedded = false }: { embedded?: boolean }) => {
             ))}
           </div>
         ) : null}
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-sm text-slate-300">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="font-medium text-slate-100">Provider Diagnostics</p>
+            <p className="mt-1 text-xs text-slate-500">{providerDiagnostics.summary}</p>
+          </div>
+          <span className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.16em] ${diagnosticTone[providerDiagnostics.overallStatus]}`}>
+            {providerDiagnostics.overallStatus}
+          </span>
+        </div>
+        <div className="mt-4 grid gap-3 xl:grid-cols-2">
+          {providerDiagnostics.checks.map((check) => (
+            <div key={check.id} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-medium text-slate-100">{check.label}</p>
+                <span className={`rounded-full border px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] ${diagnosticTone[check.status]}`}>
+                  {check.status}
+                </span>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-slate-500">{check.detail}</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          Diagnostics combine live provider metadata where available with local capability heuristics. They never send a
+          chat prompt.
+        </p>
       </div>
 
       <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-sm text-slate-300">
@@ -465,6 +505,11 @@ export const SettingsPanel = ({ embedded = false }: { embedded?: boolean }) => {
                           no metadata
                         </span>
                       )}
+                      {model.contextWindow ? (
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-slate-300">
+                          ctx {model.contextWindow.toLocaleString()}
+                        </span>
+                      ) : null}
                     </span>
                   </button>
                 );

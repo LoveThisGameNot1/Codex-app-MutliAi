@@ -572,6 +572,8 @@ export type AvailableModelRecord = {
   id: string;
   ownedBy?: string;
   capabilities?: ModelCapabilityAssessment;
+  contextWindow?: number | null;
+  maxOutputTokens?: number | null;
 };
 
 export type ModelCapabilityLevel = 'supported' | 'likely' | 'limited' | 'unknown';
@@ -593,6 +595,26 @@ export type ModelCatalogResult = {
   fetchedAt: string;
   warning?: string;
   models: AvailableModelRecord[];
+};
+
+export type ProviderDiagnosticStatus = 'ready' | 'warning' | 'blocked';
+
+export type ProviderDiagnosticCheck = {
+  id: string;
+  label: string;
+  status: ProviderDiagnosticStatus;
+  detail: string;
+};
+
+export type ProviderDiagnosticsResult = {
+  providerId: string;
+  providerLabel: string;
+  baseUrl: string;
+  model: string;
+  generatedAt: string;
+  overallStatus: ProviderDiagnosticStatus;
+  summary: string;
+  checks: ProviderDiagnosticCheck[];
 };
 
 export type ChatStreamEvent =

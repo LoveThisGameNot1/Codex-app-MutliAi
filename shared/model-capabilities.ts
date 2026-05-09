@@ -5,6 +5,12 @@ export type DiscoveredModelCapabilityMetadata = {
   supportedGenerationMethods?: string[];
   supportedParameters?: string[];
   outputModalities?: string[];
+  anthropicCapabilities?: {
+    structuredOutputs?: boolean;
+    codeExecution?: boolean;
+    contextManagement?: boolean;
+    thinking?: boolean;
+  };
   sourceLabel?: string;
 };
 
@@ -291,6 +297,34 @@ export const inferDiscoveredModelCapabilities = (
 
     notes.push('OpenRouter metadata did not advertise tool parameters for this model, so tool calling is treated as limited.');
     return createAssessment('likely', 'limited', notes, 'gateway-unknown');
+  }
+
+  if (providerId === 'anthropic') {
+    const normalizedModelId = normalizeModelId(modelId);
+    if (!normalizedModelId.includes('claude')) {
+      notes.push('Anthropic metadata was returned, but this does not look like a Claude chat model.');
+      return createAssessment('limited', 'limited', notes, fallback.transport);
+    }
+
+    const capabilities = metadata.anthropicCapabilities;
+    if (capabilities?.structuredOutputs) {
+      notes.push('Anthropic model metadata advertises structured output support.');
+    }
+
+    if (capabilities?.codeExecution) {
+      notes.push('Anthropic model metadata advertises server-side code execution support.');
+    }
+
+    if (capabilities?.contextManagement) {
+      notes.push('Anthropic model metadata advertises context-management support.');
+    }
+
+    if (capabilities?.thinking) {
+      notes.push('Anthropic model metadata advertises thinking support.');
+    }
+
+    notes.push('Anthropic models.list confirms this model is available on the official API account.');
+    return createAssessment('supported', 'supported', notes, 'native');
   }
 
   return fallback;
