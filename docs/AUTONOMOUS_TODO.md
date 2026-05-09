@@ -111,11 +111,13 @@ Why this matters:
 
 - [x] Add deeper provider-specific capability discovery where official APIs support it.
 - [x] Add provider health diagnostics for auth, models, tools, and streaming.
-- [ ] Add saved provider profiles with masked keys and preferred defaults.
+- [x] Add saved provider profiles with masked keys and preferred defaults.
 - [ ] Add account-linking support where providers officially allow it, including clear sign-in flows and linked-account status in the UI.
 - [x] Clearly distinguish consumer subscriptions like ChatGPT Plus / Claude Pro from real API access, and guide users toward supported billing or API-key setups.
 - [ ] Add explicit fallback routing when a selected model is weak for agent use.
-- [ ] Add tests for provider profile persistence and fallback selection.
+- [-] Add tests for provider profile persistence and fallback selection.
+  - [x] Provider profile persistence.
+  - [ ] Fallback selection.
 
 Why this matters:
 - This strengthens one of the app’s biggest differentiators: multi-provider support.
@@ -158,7 +160,6 @@ Why this matters:
 - Always verify with tests and builds after each meaningful change.
 - Keep local-first strengths intact instead of copying cloud-only product assumptions blindly.
 - When in doubt, prioritize safety and recoverability before adding more autonomy.
-
 
 
 

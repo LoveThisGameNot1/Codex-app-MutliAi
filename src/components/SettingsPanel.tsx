@@ -2,8 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AutomationPanel } from '@/components/AutomationPanel';
 import { useAppStore } from '@/store/app-store';
 import { chatRuntime } from '@/services/chat-runtime';
-import { listAvailableModels } from '@/services/electron-api';
-import type { ModelCatalogResult, ProviderDiagnosticStatus, ToolAccessMode } from '../../shared/contracts';
+import {
+  applyProviderProfile,
+  deleteProviderProfile,
+  listAvailableModels,
+  listProviderProfiles,
+  saveProviderProfile,
+} from '@/services/electron-api';
+import type {
+  ModelCatalogResult,
+  ProviderDiagnosticStatus,
+  ProviderProfileRecord,
+  ToolAccessMode,
+} from '../../shared/contracts';
 import { inferConfiguredModelCapabilities } from '../../shared/model-capabilities';
 import { buildProviderDiagnostics } from '../../shared/provider-diagnostics';
 import {
@@ -73,6 +84,7 @@ const policyTone = (mode: ToolAccessMode): string => {
 
 export const SettingsPanel = ({ embedded = false }: { embedded?: boolean }) => {
   const config = useAppStore((state) => state.config);
+  const hydrateConfig = useAppStore((state) => state.hydrateConfig);
   const updateConfig = useAppStore((state) => state.updateConfig);
   const isOpen = useAppStore((state) => state.settingsOpen);
   const setSettingsOpen = useAppStore((state) => state.setSettingsOpen);
@@ -80,6 +92,7 @@ export const SettingsPanel = ({ embedded = false }: { embedded?: boolean }) => {
   const persistedSessions = useAppStore((state) => state.persistedSessions);
   const activeSessionId = useAppStore((state) => state.sessionId);
   const isStreaming = useAppStore((state) => state.isStreaming);
+  const settingsVisible = embedded || isOpen;
 
   const workspaceLabel = useMemo(() => appInfo?.workspaceRoot || 'Unavailable', [appInfo]);
   const providerPreset = useMemo(() => getProviderPreset(config.providerId), [config.providerId]);
@@ -90,6 +103,11 @@ export const SettingsPanel = ({ embedded = false }: { embedded?: boolean }) => {
   const [modelCatalog, setModelCatalog] = useState<ModelCatalogResult | null>(null);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  const [providerProfiles, setProviderProfiles] = useState<ProviderProfileRecord[]>([]);
+  const [providerProfilesLoading, setProviderProfilesLoading] = useState(false);
+  const [providerProfilesError, setProviderProfilesError] = useState<string | null>(null);
+  const [providerProfilesStatus, setProviderProfilesStatus] = useState<string | null>(null);
+  const [providerProfileName, setProviderProfileName] = useState('');
   const selectedModelCapabilities = useMemo(() => {
     const discoveredModel = modelCatalog?.models.find((model) => model.id === config.model);
     return discoveredModel?.capabilities ?? inferConfiguredModelCapabilities(config);
@@ -134,7 +152,7 @@ export const SettingsPanel = ({ embedded = false }: { embedded?: boolean }) => {
   }, [config]);
 
   useEffect(() => {
-    if (!isOpen) {
+    if (!settingsVisible) {
       return undefined;
     }
 
@@ -145,9 +163,98 @@ export const SettingsPanel = ({ embedded = false }: { embedded?: boolean }) => {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [autoRefreshKey, isOpen, loadProviderModels]);
+  }, [autoRefreshKey, loadProviderModels, settingsVisible]);
 
-  if (!embedded && !isOpen) {
+  const loadSavedProviderProfiles = useCallback(async () => {
+    setProviderProfilesLoading(true);
+    setProviderProfilesError(null);
+
+    try {
+      setProviderProfiles(await listProviderProfiles());
+    } catch (error) {
+      setProviderProfilesError(error instanceof Error ? error.message : 'Unable to load provider profiles.');
+    } finally {
+      setProviderProfilesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!settingsVisible) {
+      return;
+    }
+
+    void loadSavedProviderProfiles();
+  }, [loadSavedProviderProfiles, settingsVisible]);
+
+  const saveCurrentProviderProfile = useCallback(
+    async (setDefault: boolean) => {
+      setProviderProfilesStatus(null);
+      setProviderProfilesError(null);
+
+      try {
+        const name = providerProfileName.trim() || `${providerPreset.label} - ${config.model}`;
+        const profile = await saveProviderProfile({
+          name,
+          providerId: config.providerId,
+          baseUrl: config.baseUrl,
+          apiKey: config.apiKey,
+          model: config.model,
+          systemPrompt: config.systemPrompt,
+          setDefault,
+        });
+        setProviderProfileName('');
+        setProviderProfilesStatus(
+          setDefault ? `Saved "${profile.name}" as the default provider profile.` : `Saved "${profile.name}".`,
+        );
+        await loadSavedProviderProfiles();
+      } catch (error) {
+        setProviderProfilesError(error instanceof Error ? error.message : 'Unable to save provider profile.');
+      }
+    },
+    [config, loadSavedProviderProfiles, providerPreset.label, providerProfileName],
+  );
+
+  const applySavedProviderProfile = useCallback(
+    async (profile: ProviderProfileRecord) => {
+      setProviderProfilesStatus(null);
+      setProviderProfilesError(null);
+
+      try {
+        const nextConfig = await applyProviderProfile({ id: profile.id });
+        hydrateConfig(nextConfig);
+        setModelCatalog(null);
+        setModelsError(null);
+        setProviderProfilesStatus(`Applied "${profile.name}".`);
+        await loadSavedProviderProfiles();
+      } catch (error) {
+        setProviderProfilesError(error instanceof Error ? error.message : 'Unable to apply provider profile.');
+      }
+    },
+    [hydrateConfig, loadSavedProviderProfiles],
+  );
+
+  const deleteSavedProviderProfile = useCallback(
+    async (profile: ProviderProfileRecord) => {
+      const confirmed = window.confirm(`Delete provider profile "${profile.name}"? The stored key will be removed.`);
+      if (!confirmed) {
+        return;
+      }
+
+      setProviderProfilesStatus(null);
+      setProviderProfilesError(null);
+
+      try {
+        await deleteProviderProfile(profile.id);
+        setProviderProfilesStatus(`Deleted "${profile.name}".`);
+        await loadSavedProviderProfiles();
+      } catch (error) {
+        setProviderProfilesError(error instanceof Error ? error.message : 'Unable to delete provider profile.');
+      }
+    },
+    [loadSavedProviderProfiles],
+  );
+
+  if (!settingsVisible) {
     return null;
   }
 
@@ -248,6 +355,121 @@ export const SettingsPanel = ({ embedded = false }: { embedded?: boolean }) => {
             className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-slate-100 outline-none transition focus:border-sky-400/40"
           />
         </label>
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-emerald-400/15 bg-emerald-400/5 px-4 py-4 text-sm text-slate-300">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <p className="font-medium text-emerald-100">Provider Profiles</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Save reusable provider setups locally. The renderer only receives masked keys; the raw key stays inside
+              the Electron main-process profile store.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadSavedProviderProfiles()}
+            disabled={providerProfilesLoading}
+            className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:text-slate-500"
+          >
+            {providerProfilesLoading ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto]">
+          <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+            Profile Name
+            <input
+              type="text"
+              value={providerProfileName}
+              onChange={(event) => setProviderProfileName(event.target.value)}
+              placeholder={`${providerPreset.label} - ${config.model}`}
+              className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm normal-case tracking-normal text-slate-100 outline-none transition focus:border-emerald-400/40"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => void saveCurrentProviderProfile(false)}
+            className="self-end rounded-full border border-emerald-400/30 bg-emerald-400/10 px-5 py-3 text-sm font-medium text-emerald-100 transition hover:bg-emerald-400/20"
+          >
+            Save Profile
+          </button>
+          <button
+            type="button"
+            onClick={() => void saveCurrentProviderProfile(true)}
+            className="self-end rounded-full border border-amber-300/30 bg-amber-300/10 px-5 py-3 text-sm font-medium text-amber-100 transition hover:bg-amber-300/20"
+          >
+            Save As Default
+          </button>
+        </div>
+
+        {providerProfilesError ? <p className="mt-3 text-xs text-rose-300">{providerProfilesError}</p> : null}
+        {providerProfilesStatus ? <p className="mt-3 text-xs text-emerald-200">{providerProfilesStatus}</p> : null}
+
+        <div className="mt-4 grid gap-3 xl:grid-cols-2">
+          {providerProfiles.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-700/80 bg-black/10 px-4 py-4 text-sm text-slate-500">
+              No saved provider profiles yet.
+            </div>
+          ) : null}
+
+          {providerProfiles.map((profile) => {
+            const isActive =
+              profile.providerId === config.providerId &&
+              profile.baseUrl === config.baseUrl &&
+              profile.model === config.model;
+
+            return (
+              <div key={profile.id} className="rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-100">{profile.name}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {profile.providerLabel} | {profile.model}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {profile.isDefault ? (
+                      <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-amber-100">
+                        Default
+                      </span>
+                    ) : null}
+                    {isActive ? (
+                      <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-emerald-100">
+                        Active
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="mt-3 space-y-1 text-xs text-slate-500">
+                  <p className="truncate">Endpoint: {profile.baseUrl}</p>
+                  <p>Key: {profile.hasApiKey ? profile.apiKeyMasked : 'No API key stored'}</p>
+                  <p>
+                    Updated: {new Date(profile.updatedAt).toLocaleString()}
+                    {profile.lastUsedAt ? ` | Used: ${new Date(profile.lastUsedAt).toLocaleString()}` : ''}
+                  </p>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void applySavedProviderProfile(profile)}
+                    disabled={isActive}
+                    className="rounded-full border border-sky-400/30 bg-sky-400/10 px-4 py-2 text-xs font-medium text-sky-100 transition hover:bg-sky-400/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
+                  >
+                    {isActive ? 'Applied' : 'Apply'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void deleteSavedProviderProfile(profile)}
+                    className="rounded-full border border-rose-400/30 bg-rose-400/10 px-4 py-2 text-xs font-medium text-rose-100 transition hover:bg-rose-400/20"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-sm text-slate-300">

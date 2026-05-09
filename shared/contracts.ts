@@ -91,6 +91,37 @@ export type AppConfig = {
 
 export type AppConfigUpdate = Partial<AppConfig>;
 
+export type ProviderProfileRecord = {
+  id: string;
+  name: string;
+  providerId: string;
+  providerLabel: string;
+  baseUrl: string;
+  model: string;
+  systemPrompt?: string;
+  apiKeyMasked: string;
+  hasApiKey: boolean;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt?: string;
+};
+
+export type SaveProviderProfileInput = {
+  id?: string;
+  name: string;
+  providerId: string;
+  baseUrl: string;
+  apiKey?: string;
+  model: string;
+  systemPrompt?: string;
+  setDefault?: boolean;
+};
+
+export type ApplyProviderProfileInput = {
+  id: string;
+};
+
 export type ToolPolicyConfig = {
   readFile: ToolAccessMode;
   outsideWorkspaceReads: ToolAccessMode;
@@ -703,6 +734,10 @@ export type DesktopApi = {
   getConfig: () => Promise<AppConfig>;
   updateConfig: (update: AppConfigUpdate) => Promise<AppConfig>;
   listAvailableModels: (config: AppConfig) => Promise<ModelCatalogResult>;
+  listProviderProfiles: () => Promise<ProviderProfileRecord[]>;
+  saveProviderProfile: (input: SaveProviderProfileInput) => Promise<ProviderProfileRecord>;
+  applyProviderProfile: (input: ApplyProviderProfileInput) => Promise<AppConfig>;
+  deleteProviderProfile: (profileId: string) => Promise<void>;
   getProjectMemorySnapshot: () => Promise<ProjectMemorySnapshot>;
   createProjectMemory: (input: CreateProjectMemoryInput) => Promise<ProjectMemoryRecord>;
   updateProjectMemory: (input: UpdateProjectMemoryInput) => Promise<ProjectMemoryRecord>;

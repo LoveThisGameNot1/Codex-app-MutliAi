@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AppConfig,
   AppConfigUpdate,
+  ApplyProviderProfileInput,
   AutomationEvent,
   AutomationRecord,
   AutomationRunRecord,
@@ -34,8 +35,10 @@ import type {
   PluginRecord,
   ProjectMemoryRecord,
   ProjectMemorySnapshot,
+  ProviderProfileRecord,
   ResetChatRequest,
   ResolveToolApprovalInput,
+  SaveProviderProfileInput,
   StartChatRequest,
   TaskCloneResult,
   UpdateAutomationInput,
@@ -50,6 +53,12 @@ const desktopApi: DesktopApi = {
   getConfig: (): Promise<AppConfig> => ipcRenderer.invoke('config:get'),
   updateConfig: (update: AppConfigUpdate): Promise<AppConfig> => ipcRenderer.invoke('config:update', update),
   listAvailableModels: (config: AppConfig) => ipcRenderer.invoke('models:list', config),
+  listProviderProfiles: (): Promise<ProviderProfileRecord[]> => ipcRenderer.invoke('provider-profiles:list'),
+  saveProviderProfile: (input: SaveProviderProfileInput): Promise<ProviderProfileRecord> =>
+    ipcRenderer.invoke('provider-profiles:save', input),
+  applyProviderProfile: (input: ApplyProviderProfileInput): Promise<AppConfig> =>
+    ipcRenderer.invoke('provider-profiles:apply', input),
+  deleteProviderProfile: (profileId: string): Promise<void> => ipcRenderer.invoke('provider-profiles:delete', profileId),
   getProjectMemorySnapshot: (): Promise<ProjectMemorySnapshot> => ipcRenderer.invoke('project-memory:get-snapshot'),
   createProjectMemory: (input: CreateProjectMemoryInput): Promise<ProjectMemoryRecord> =>
     ipcRenderer.invoke('project-memory:create', input),

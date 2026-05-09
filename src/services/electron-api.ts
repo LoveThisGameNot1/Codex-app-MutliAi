@@ -1,6 +1,7 @@
 import type {
   AppConfig,
   AppConfigUpdate,
+  ApplyProviderProfileInput,
   ModelCatalogResult,
   AutomationEvent,
   AutomationRecord,
@@ -34,8 +35,10 @@ import type {
   PluginRecord,
   ProjectMemoryRecord,
   ProjectMemorySnapshot,
+  ProviderProfileRecord,
   ResetChatRequest,
   ResolveToolApprovalInput,
+  SaveProviderProfileInput,
   StartChatRequest,
   TaskCloneResult,
   UpdateAutomationInput,
@@ -66,6 +69,14 @@ export const updateConfig = (update: AppConfigUpdate): Promise<AppConfig> =>
   requireDesktopApi().updateConfig(update);
 export const listAvailableModels = (config: AppConfig): Promise<ModelCatalogResult> =>
   requireDesktopApi().listAvailableModels(config);
+export const listProviderProfiles = (): Promise<ProviderProfileRecord[]> =>
+  requireDesktopApi().listProviderProfiles();
+export const saveProviderProfile = (input: SaveProviderProfileInput): Promise<ProviderProfileRecord> =>
+  requireDesktopApi().saveProviderProfile(input);
+export const applyProviderProfile = (input: ApplyProviderProfileInput): Promise<AppConfig> =>
+  requireDesktopApi().applyProviderProfile(input);
+export const deleteProviderProfile = (profileId: string): Promise<void> =>
+  requireDesktopApi().deleteProviderProfile(profileId);
 export const getProjectMemorySnapshot = (): Promise<ProjectMemorySnapshot> =>
   requireDesktopApi().getProjectMemorySnapshot();
 export const createProjectMemory = (input: CreateProjectMemoryInput): Promise<ProjectMemoryRecord> =>

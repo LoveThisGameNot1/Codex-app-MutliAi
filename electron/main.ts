@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   AppConfigUpdate,
+  ApplyProviderProfileInput,
   CaptureArtifactPreviewInput,
   CreateProjectMemoryInput,
   CreateAutomationInput,
@@ -18,6 +19,7 @@ import {
   ResetChatRequest,
   StartChatRequest,
   PersistedSessionPayload,
+  SaveProviderProfileInput,
   UpdateAutomationInput,
   UpdateProjectMemoryInput,
   UpdateWorkspaceInstructionsInput,
@@ -32,6 +34,7 @@ import { McpConnectorService } from './mcp-connector-service';
 import { PluginService } from './plugin-service';
 import { PreviewCaptureService } from './preview-capture-service';
 import { ProjectMemoryService } from './project-memory-service';
+import { ProviderProfileStore } from './provider-profile-store';
 import { SessionStore, toSessionSummary } from './session-store';
 import { TaskWorkspaceService } from './task-workspace-service';
 
@@ -40,6 +43,7 @@ const __dirname = path.dirname(__filename);
 const isDev = !app.isPackaged;
 const workspaceRoot = process.cwd();
 const configStore = new ConfigStore();
+const providerProfileStore = new ProviderProfileStore(app.getPath('userData'));
 const sessionStore = new SessionStore(app.getPath('userData'));
 const automationStore = new AutomationStore(app.getPath('userData'));
 const projectMemoryService = new ProjectMemoryService(app.getPath('userData'), workspaceRoot);
@@ -176,6 +180,15 @@ const registerIpcHandlers = (): void => {
   ipcMain.handle('config:get', () => configStore.get());
   ipcMain.handle('config:update', (_event, update: AppConfigUpdate) => configStore.update(update));
   ipcMain.handle('models:list', (_event, config) => llmService.listAvailableModels(config));
+  ipcMain.handle('provider-profiles:list', () => providerProfileStore.list());
+  ipcMain.handle('provider-profiles:save', (_event, input: SaveProviderProfileInput) =>
+    providerProfileStore.save(input),
+  );
+  ipcMain.handle('provider-profiles:apply', async (_event, input: ApplyProviderProfileInput) => {
+    const nextConfig = await providerProfileStore.apply(input);
+    return configStore.update(nextConfig);
+  });
+  ipcMain.handle('provider-profiles:delete', (_event, profileId: string) => providerProfileStore.delete(profileId));
   ipcMain.handle('project-memory:get-snapshot', () => projectMemoryService.getSnapshot());
   ipcMain.handle('project-memory:create', (_event, input: CreateProjectMemoryInput) =>
     projectMemoryService.createMemory(input),
